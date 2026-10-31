@@ -12,9 +12,11 @@ dockup update immich          # whole project: pull, down, up -d
 dockup update immich/redis    # single service: pull, up -d
 dockup update --all --dry-run # everything with pending updates, print only
 dockup ports [--proto tcp] [--project immich]
+dockup ports --managed --group  # only projects under the roots, by project → service
 dockup port-check 8080,9000-9010 [--ip 10.8.0.1] [--proto tcp|udp|both]
 dockup port-check --free 8000-9000
 dockup ui                     # interactive (also: dockup -i)
+                              #   ports tab: f = all/managed, v = grouped/flat, / = port check
 ```
 
 Every command accepts `--json`, `--config PATH` and `--root DIR`.
