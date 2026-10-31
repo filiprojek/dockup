@@ -1,0 +1,9 @@
+PROTO  ADDRESS    PORT  IFACE  OWNER
+tcp    0.0.0.0    22    *      sshd (pid 812)
+udp    10.8.0.1   53    wg0    adguard/adguard
+tcp    ::         2283  *      immich/immich-server (immich_server)
+tcp    127.0.0.1  5432  lo     ?
+tcp    0.0.0.0    8096  *      jellyfin/jellyfin *
+
+? owner not visible to this user; run with sudo to see all processes
+* published by Docker without a listening socket (userland-proxy disabled)

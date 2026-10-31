@@ -1,0 +1,5 @@
+tcp/22    0.0.0.0  IN USE    sshd (pid 812) on 0.0.0.0
+tcp/3000  0.0.0.0  RESERVED  declared by stopped gitea/server
+tcp/443   0.0.0.0  UNKNOWN   privileged port: bind test needs root; no known listener
+tcp/9000  0.0.0.0  FREE
+tcp/7000  0.0.0.0  IN USE    bind failed: address in use by an unidentified process (try sudo for details)

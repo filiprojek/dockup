@@ -1,0 +1,6 @@
+services:
+  app:
+    image: ghcr.io/acme/web:latest
+    ports: ["8080:80"]
+  cache:
+    image: redis:7

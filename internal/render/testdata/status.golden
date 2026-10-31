@@ -1,0 +1,8 @@
+gitea · stopped · /srv/docker/gitea
+  server         missing  -          outdated           gitea/gitea:1.24
+immich · running · /srv/docker/immich
+  database       running  healthy    skipped (ignored)  ghcr.io/immich-app/postgres:14
+  immich-server  running  unhealthy  outdated           ghcr.io/immich-app/immich-server:release
+  redis          running  -          pending-recreate   valkey/valkey:8
+random_nginx · stopped · standalone
+  random_nginx   stopped  -          error              nginx

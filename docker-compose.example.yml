@@ -1,0 +1,18 @@
+# Run dockup itself in a container. Port inspection needs the host's network
+# and PID namespaces; compose roots must be mounted at the same path so that
+# relative paths in your compose files still resolve.
+services:
+  dockup:
+    image: dockup:latest
+    network_mode: host
+    pid: host
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /srv/docker:/srv/docker
+      - ${HOME}/.docker/config.json:/root/.docker/config.json:ro   # registry auth
+      - ./config.yml:/etc/dockup/config.yml:ro
+      - dockup-cache:/root/.cache/dockup
+    # e.g. a periodic check with notifications:
+    command: ["check", "--notify"]
+volumes:
+  dockup-cache:

@@ -1,0 +1,21 @@
+# ~/.config/dockup/config.yml or /etc/dockup/config.yml
+roots:
+  - /srv/docker
+# exclude from update checks: "project" or "project/service"
+# (a service can also opt out with the label dockup.ignore=true)
+ignore:
+  - traefik
+  - immich/immich-machine-learning
+# log_path: ~/.local/state/dockup/dockup.log
+# cache_path: ~/.cache/dockup/updates.json
+concurrency: 8
+notify:
+  ntfy:
+    url: https://ntfy.sh
+    topic: my-server-updates
+    # token: tk_...
+  # gotify:
+  #   url: https://gotify.example.com
+  #   token: A...
+  # webhook:
+  #   url: https://hooks.example.com/dockup

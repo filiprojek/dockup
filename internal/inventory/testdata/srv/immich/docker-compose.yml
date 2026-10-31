@@ -1,0 +1,15 @@
+name: immich
+services:
+  immich-server:
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    ports:
+      - "2283:2283"
+    depends_on: [redis, database]
+  immich-machine-learning:
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+  redis:
+    image: docker.io/valkey/valkey:8-bookworm
+  database:
+    image: ghcr.io/immich-app/postgres:14-vectorchord0.4.3@sha256:5f6a838e4e44c8e0e019d0ebfe3ee8952b69afc2809b2c25f7b0119641978e91
+    labels:
+      dockup.ignore: "true"
