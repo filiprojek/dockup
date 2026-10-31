@@ -1,10 +1,14 @@
 package inventory
 
 import (
+	"bytes"
 	"context"
 	"net/netip"
+	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/filiprojek/dockup/internal/dockerx"
 )
@@ -204,5 +208,20 @@ func TestManaged(t *testing.T) {
 	want := map[string]bool{"immich": true, "nested": true}
 	if len(got) != len(want) || !got["immich"] || !got["nested"] {
 		t.Errorf("Managed = %v, want %v", got, want)
+	}
+}
+
+func TestComposeWarningsAreSilenced(t *testing.T) {
+	// compose-go logs through the global logrus logger (e.g. "variable is not
+	// set"), which would clutter dockup's output
+	var buf bytes.Buffer
+	logrus.SetOutput(&buf)
+	t.Cleanup(func() { logrus.SetOutput(os.Stderr) })
+
+	if _, err := loadCompose(context.Background(), "testdata/noisy", []string{"testdata/noisy/compose.yml"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if buf.Len() != 0 {
+		t.Errorf("compose-go logged: %q", buf.String())
 	}
 }

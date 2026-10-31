@@ -9,9 +9,17 @@ import (
 
 	"github.com/compose-spec/compose-go/v2/cli"
 	"github.com/compose-spec/compose-go/v2/types"
+	"github.com/sirupsen/logrus"
 
 	"github.com/filiprojek/dockup/internal/ports"
 )
+
+func init() {
+	// compose-go warns via the global logrus logger ("variable is not set",
+	// "multiple config files"); docker compose itself shows those when the
+	// project runs, so keep dockup's output clean. Real errors are returned.
+	logrus.SetLevel(logrus.ErrorLevel)
+}
 
 // findComposeFiles returns the compose file (plus override, if any) directly
 // inside dir, using compose's own precedence. Nil if none.
