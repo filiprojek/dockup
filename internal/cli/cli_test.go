@@ -375,3 +375,34 @@ func TestVersion(t *testing.T) {
 		t.Errorf("json %v: %s", err, out)
 	}
 }
+
+func TestPortsManagedAndGrouped(t *testing.T) {
+	e := newEnv(t)
+
+	out, err := e.run(t, "ports", "--managed")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(out, "8080") || strings.Contains(out, " 22 ") {
+		t.Errorf("--managed should keep web:8080 and drop sshd:22:\n%s", out)
+	}
+
+	out, err = e.run(t, "ports", "--group")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"gitea", "stopped", "3000", "reserved", "web", "app", "8080", "other", "22"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("--group missing %q:\n%s", want, out)
+		}
+	}
+	if strings.Index(out, "gitea") > strings.Index(out, "web") || strings.Index(out, "other") < strings.Index(out, "web") {
+		t.Errorf("group order wrong:\n%s", out)
+	}
+
+	out, _ = e.run(t, "ports", "--group", "--managed", "--json")
+	var gs []ports.Group
+	if err := json.Unmarshal([]byte(out), &gs); err != nil || len(gs) != 2 || gs[0].Project != "gitea" || gs[1].Project != "web" {
+		t.Errorf("json %v: %s", err, out)
+	}
+}

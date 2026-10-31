@@ -1,0 +1,10 @@
+gitea · stopped
+  server         tcp  2222  127.0.0.1 (lo)  reserved
+                 tcp  3000  all (IPv4)      reserved
+immich
+  database       tcp  5432  127.0.0.1 (lo)
+  immich-server  tcp  2283  all
+jellyfin
+  jellyfin       tcp  8096  all (IPv4)      no proxy
+other (host processes, standalone containers)
+  sshd           tcp  22    all

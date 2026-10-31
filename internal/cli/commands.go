@@ -259,23 +259,52 @@ func refOf(c dockerx.Container) ports.Ref {
 
 func (a *App) portsCmd() *cobra.Command {
 	var proto, project string
+	var managed, group bool
 	cmd := &cobra.Command{
 		Use:   "ports",
 		Short: "List listening ports with owning container/process and interface",
-		Args:  cobra.NoArgs,
+		Example: `  dockup ports                     # every listening socket
+  dockup ports --managed --group   # only projects under the compose roots, grouped`,
+		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			rows, err := a.PortTable(cmd.Context())
+			ctx := cmd.Context()
+			rows, err := a.PortTable(ctx)
 			if err != nil {
 				return err
 			}
-			rows = slices.DeleteFunc(rows, func(b ports.Binding) bool {
-				return (proto != "" && string(b.Proto) != proto) || (project != "" && b.Project != project)
-			})
-			if a.JSON {
-				if rows == nil {
-					rows = []ports.Binding{}
+			var declared []ports.Declared
+			keep := func(string) bool { return true }
+			if managed || group {
+				inv, err := a.Inventory(ctx)
+				if err != nil {
+					return err
 				}
-				return render.JSON(a.Stdout, rows)
+				declared = inv.DeclaredStopped()
+				if managed {
+					m := inv.Managed(a.Cfg.Roots)
+					keep = func(p string) bool { return m[p] }
+				}
+			}
+			drop := func(p ports.Proto, proj string) bool {
+				return (proto != "" && string(p) != proto) || (project != "" && proj != project) || (managed && !keep(proj))
+			}
+			rows = slices.DeleteFunc(rows, func(b ports.Binding) bool { return drop(b.Proto, b.Project) })
+			declared = slices.DeleteFunc(declared, func(d ports.Declared) bool { return drop(d.Proto, d.Project) })
+
+			if group {
+				var filter func(string) bool
+				if managed {
+					filter = keep
+				}
+				gs := ports.GroupBindings(rows, declared, filter)
+				if a.JSON {
+					return render.JSON(a.Stdout, orEmpty(gs))
+				}
+				a.R.PortGroups(a.Stdout, gs)
+				return nil
+			}
+			if a.JSON {
+				return render.JSON(a.Stdout, orEmpty(rows))
 			}
 			a.R.Ports(a.Stdout, rows)
 			return nil
@@ -283,7 +312,17 @@ func (a *App) portsCmd() *cobra.Command {
 	}
 	cmd.Flags().StringVar(&proto, "proto", "", "only tcp or udp")
 	cmd.Flags().StringVar(&project, "project", "", "only ports of this compose project")
+	cmd.Flags().BoolVar(&managed, "managed", false, "only ports of compose projects under the roots (e.g. /srv/docker)")
+	cmd.Flags().BoolVar(&group, "group", false, "group by project and service; includes stopped projects' ports as reserved")
 	return cmd
+}
+
+// orEmpty makes JSON output [] instead of null.
+func orEmpty[T any](s []T) []T {
+	if s == nil {
+		return []T{}
+	}
+	return s
 }
 
 func parseProtos(s string) ([]ports.Proto, error) {

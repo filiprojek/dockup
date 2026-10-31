@@ -370,3 +370,35 @@ func (r Renderer) PortCheck(w io.Writer, rs []ports.Result) {
 	}
 	t.write(w)
 }
+
+// PortGroups renders ports grouped by project → service.
+func (r Renderer) PortGroups(w io.Writer, gs []ports.Group) {
+	var t table
+	for _, g := range gs {
+		switch {
+		case g.Project == "":
+			t.section(r.paint(bold, "other") + r.paint(dim, " (host processes, standalone containers)"))
+		case g.Stopped:
+			t.section(fmt.Sprintf("%s %s %s", r.paint(bold, g.Project), r.paint(dim, "·"), r.paint(red, "stopped")))
+		default:
+			t.section(r.paint(bold, g.Project))
+		}
+		for _, s := range g.Services {
+			for i, e := range s.Entries {
+				name := ""
+				if i == 0 {
+					name = s.Name
+				}
+				note := cell{}
+				switch {
+				case e.Reserved:
+					note = r.c(yellow, "reserved")
+				case e.NATOnly:
+					note = r.c(dim, "no proxy")
+				}
+				t.add(plain("  "+name), plain(string(e.Proto)), plain(fmt.Sprint(e.Port)), plain(e.Scope()), note)
+			}
+		}
+	}
+	t.write(w)
+}

@@ -133,3 +133,28 @@ func TestAgo(t *testing.T) {
 		}
 	}
 }
+
+func TestPortGroups(t *testing.T) {
+	a := netip.MustParseAddr
+	gs := []ports.Group{
+		{Project: "gitea", Stopped: true, Services: []ports.ServiceGroup{
+			{Name: "server", Entries: []ports.Entry{
+				{Proto: ports.TCP, Port: 2222, IPs: []netip.Addr{a("127.0.0.1")}, Ifaces: []string{"lo"}, Reserved: true},
+				{Proto: ports.TCP, Port: 3000, IPs: []netip.Addr{a("0.0.0.0")}, Ifaces: []string{"*"}, Reserved: true},
+			}},
+		}},
+		{Project: "immich", Services: []ports.ServiceGroup{
+			{Name: "database", Entries: []ports.Entry{{Proto: ports.TCP, Port: 5432, IPs: []netip.Addr{a("127.0.0.1")}, Ifaces: []string{"lo"}}}},
+			{Name: "immich-server", Entries: []ports.Entry{{Proto: ports.TCP, Port: 2283, IPs: []netip.Addr{a("0.0.0.0"), a("::")}, Ifaces: []string{"*", "*"}}}},
+		}},
+		{Project: "jellyfin", Services: []ports.ServiceGroup{
+			{Name: "jellyfin", Entries: []ports.Entry{{Proto: ports.TCP, Port: 8096, IPs: []netip.Addr{a("0.0.0.0")}, Ifaces: []string{"*"}, NATOnly: true}}},
+		}},
+		{Project: "", Services: []ports.ServiceGroup{
+			{Name: "sshd", Entries: []ports.Entry{{Proto: ports.TCP, Port: 22, IPs: []netip.Addr{a("0.0.0.0"), a("::")}, Ifaces: []string{"*", "*"}}}},
+		}},
+	}
+	var b bytes.Buffer
+	Plain().PortGroups(&b, gs)
+	golden(t, "portgroups", b.Bytes())
+}
