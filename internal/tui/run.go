@@ -27,7 +27,14 @@ func Run(ctx context.Context, a *cli.App) error {
 		if err != nil {
 			return err
 		}
-		m := New(Data{Inventory: inv, Report: a.CachedReport(), Ports: portRows}, Funcs{
+		m := New(Data{
+			Inventory: inv,
+			Report:    a.CachedReport(),
+			Ports:     portRows,
+			Declared:  inv.DeclaredStopped(),
+			Managed:   inv.Managed(a.Cfg.Roots),
+			Roots:     a.Cfg.Roots,
+		}, Funcs{
 			Check: func() (updates.Report, error) {
 				fresh, err := a.Inventory(ctx)
 				if err != nil {

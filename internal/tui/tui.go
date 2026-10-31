@@ -21,6 +21,9 @@ type Data struct {
 	Inventory *inventory.Inventory
 	Report    updates.Report
 	Ports     []ports.Binding
+	Declared  []ports.Declared // ports of stopped projects
+	Managed   map[string]bool  // projects under the compose roots
+	Roots     []string
 }
 
 // Funcs are the actions the UI can trigger; nil disables them.
@@ -66,6 +69,9 @@ type Model struct {
 	offset int // first visible row (updates) / port row
 	width  int
 	height int
+
+	allPorts bool // ports tab: include host processes and unmanaged projects
+	flat     bool // ports tab: plain table instead of grouped
 
 	busy  bool
 	err   string
@@ -165,8 +171,12 @@ func (m Model) updateBrowse(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 		switch k.String() {
 		case "/":
 			m.mode, m.input = modeInput, ""
+		case "f":
+			m.allPorts, m.offset = !m.allPorts, 0
+		case "v":
+			m.flat, m.offset = !m.flat, 0
 		case "j", "down":
-			m.offset = min(m.offset+1, max(len(m.data.Ports)-1, 0))
+			m.offset = min(m.offset+1, max(len(m.portLines())-m.portsHeight(), 0))
 		case "k", "up":
 			m.offset = max(m.offset-1, 0)
 		}
@@ -336,7 +346,7 @@ func (m Model) help() string {
 	case m.mode == modeInput:
 		return "type ports (8080, 8000-8010) · enter check · esc cancel"
 	case m.tab == tabPorts:
-		return "/ check port · j/k scroll · tab updates · q quit"
+		return "/ check port · f all/managed · v grouped/flat · j/k scroll · tab updates · q quit"
 	}
 	return "space select · a select outdated · x clear · u update · c check registries · tab ports · q quit"
 }
@@ -441,12 +451,83 @@ func (m Model) viewPorts(b *strings.Builder) {
 	if len(m.check) > 0 {
 		b.WriteString("\n")
 	}
-	fmt.Fprintf(b, "%s\n", stTitle.Render(fmt.Sprintf("%-5s  %-39s  %-5s  %-9s  %s", "PROTO", "ADDRESS", "PORT", "IFACE", "OWNER")))
-	h := m.listHeight() - len(m.check) - 2
-	end := min(m.offset+max(h, 3), len(m.data.Ports))
-	for _, p := range m.data.Ports[min(m.offset, end):end] {
-		fmt.Fprintf(b, "%-5s  %-39s  %-5d  %-9s  %s\n", p.Proto, p.IP, p.Port, p.Iface, owner(p))
+
+	roots := strings.Join(m.data.Roots, ", ")
+	scope := "showing projects under " + roots + " · f: show all"
+	if m.allPorts {
+		scope = "showing all listening ports · f: only projects under " + roots
 	}
+	b.WriteString(stDim.Render(scope) + "\n\n")
+
+	lines := m.portLines()
+	if len(lines) == 0 {
+		b.WriteString(stDim.Render("no ports") + "\n")
+		return
+	}
+	start := min(m.offset, len(lines))
+	end := min(start+m.portsHeight(), len(lines))
+	for _, l := range lines[start:end] {
+		b.WriteString(l + "\n")
+	}
+}
+
+func (m Model) portsHeight() int { return max(m.listHeight()-len(m.check)-3, 3) }
+
+// managed reports whether a project counts as one of the user's (under the roots).
+func (m Model) managed(project string) bool { return m.data.Managed[project] }
+
+// portLines renders the ports tab body (grouped or flat, filtered) as lines.
+func (m Model) portLines() []string {
+	var lines []string
+	if m.flat {
+		lines = append(lines, stTitle.Render(fmt.Sprintf("%-5s  %-39s  %-5s  %-9s  %s", "PROTO", "ADDRESS", "PORT", "IFACE", "OWNER")))
+		for _, p := range m.data.Ports {
+			if !m.allPorts && !m.managed(p.Project) {
+				continue
+			}
+			lines = append(lines, fmt.Sprintf("%-5s  %-39s  %-5d  %-9s  %s", p.Proto, p.IP, p.Port, p.Iface, owner(p)))
+		}
+		return lines
+	}
+
+	var keep func(string) bool
+	if !m.allPorts {
+		keep = m.managed
+	}
+	groups := ports.GroupBindings(m.data.Ports, m.data.Declared, keep)
+	nameW := 0
+	for _, g := range groups {
+		for _, s := range g.Services {
+			nameW = max(nameW, len(s.Name))
+		}
+	}
+	for _, g := range groups {
+		switch {
+		case g.Project == "":
+			lines = append(lines, stProject.Render("other")+stDim.Render(" (host processes, standalone containers)"))
+		case g.Stopped:
+			lines = append(lines, stProject.Render(g.Project)+"  "+stRed.Render("stopped"))
+		default:
+			lines = append(lines, stProject.Render(g.Project))
+		}
+		for _, s := range g.Services {
+			for i, e := range s.Entries {
+				name := ""
+				if i == 0 {
+					name = s.Name
+				}
+				note := ""
+				switch {
+				case e.Reserved:
+					note = stYellow.Render("reserved")
+				case e.NATOnly:
+					note = stDim.Render("no proxy")
+				}
+				lines = append(lines, strings.TrimRight(fmt.Sprintf("  %s  %-3s  %-5d  %-16s  %s", pad(name, nameW), e.Proto, e.Port, e.Scope(), note), " "))
+			}
+		}
+	}
+	return lines
 }
 
 func owner(b ports.Binding) string {

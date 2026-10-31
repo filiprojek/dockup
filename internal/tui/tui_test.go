@@ -33,9 +33,18 @@ func data() Data {
 		{Project: "immich", Service: "immich-server", Status: updates.StatusOutdated},
 		{Project: "immich", Service: "redis", Status: updates.StatusPendingRecreate},
 	}}
-	return Data{Inventory: inv, Report: rep, Ports: []ports.Binding{
-		{Proto: ports.TCP, IP: netip.MustParseAddr("0.0.0.0"), Port: 22, Iface: "*", Process: "sshd", PID: 1},
-	}}
+	a := netip.MustParseAddr
+	return Data{Inventory: inv, Report: rep,
+		Ports: []ports.Binding{
+			{Proto: ports.TCP, IP: a("0.0.0.0"), Port: 22, Iface: "*", Process: "sshd", PID: 1},
+			{Proto: ports.TCP, IP: a("0.0.0.0"), Port: 2283, Iface: "*", Ref: ports.Ref{Container: "immich_server", Project: "immich", Service: "immich-server"}},
+			{Proto: ports.TCP, IP: a("::"), Port: 2283, Iface: "*", Ref: ports.Ref{Container: "immich_server", Project: "immich", Service: "immich-server"}},
+			{Proto: ports.TCP, IP: a("0.0.0.0"), Port: 9000, Iface: "*", Ref: ports.Ref{Container: "portainer", Project: "portainer", Service: "portainer"}},
+		},
+		Declared: []ports.Declared{{Project: "gitea", Service: "server", Proto: ports.TCP, IP: a("0.0.0.0"), Port: 3000}},
+		Managed:  map[string]bool{"gitea": true, "immich": true},
+		Roots:    []string{"/srv/docker"},
+	}
 }
 
 func key(s string) tea.KeyMsg {
@@ -178,7 +187,7 @@ func TestPortsTabAndPortCheck(t *testing.T) {
 		return []ports.Result{{Proto: ports.TCP, Port: 8080, Status: ports.StatusFree}}, nil
 	}})
 	m, _ = press(t, m, "tab")
-	if m.tab != tabPorts || !strings.Contains(m.View(), "sshd") {
+	if m.tab != tabPorts || !strings.Contains(m.View(), "immich-server") {
 		t.Fatalf("ports tab:\n%s", m.View())
 	}
 	m, _ = press(t, m, "/", "8", "0", "8", "1", "backspace", "0", "enter")
@@ -208,5 +217,71 @@ func TestViewShowsStatuses(t *testing.T) {
 		if !strings.Contains(v, want) {
 			t.Errorf("view missing %q:\n%s", want, v)
 		}
+	}
+}
+
+func TestPortsGroupedAndManagedByDefault(t *testing.T) {
+	m := New(data(), Funcs{})
+	m, _ = press(t, m, "tab")
+	v := m.View()
+	for _, want := range []string{"immich", "immich-server", "2283", "gitea", "stopped", "3000", "reserved", "/srv/docker"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("missing %q:\n%s", want, v)
+		}
+	}
+	for _, hidden := range []string{"sshd", "portainer", "9000"} {
+		if strings.Contains(v, hidden) {
+			t.Errorf("%q should be filtered out by default:\n%s", hidden, v)
+		}
+	}
+	// v4 + v6 of immich-server merged into one row
+	if strings.Count(v, "2283") != 1 {
+		t.Errorf("2283 should appear once:\n%s", v)
+	}
+}
+
+func TestPortsFilterToggle(t *testing.T) {
+	m := New(data(), Funcs{})
+	m, _ = press(t, m, "tab", "f")
+	v := m.View()
+	for _, want := range []string{"sshd", "other", "portainer", "9000", "immich-server"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("after f, missing %q:\n%s", want, v)
+		}
+	}
+	m, _ = press(t, m, "f")
+	if strings.Contains(m.View(), "sshd") {
+		t.Error("f should toggle back to managed only")
+	}
+}
+
+func TestPortsFlatView(t *testing.T) {
+	m := New(data(), Funcs{})
+	m, _ = press(t, m, "tab", "v")
+	v := m.View()
+	if !strings.Contains(v, "PROTO") || !strings.Contains(v, "immich/immich-server") {
+		t.Errorf("flat view:\n%s", v)
+	}
+	if strings.Contains(v, "sshd") {
+		t.Errorf("flat view should keep the managed filter:\n%s", v)
+	}
+	m, _ = press(t, m, "f")
+	if !strings.Contains(m.View(), "sshd") {
+		t.Errorf("flat + f should show everything:\n%s", m.View())
+	}
+	m, _ = press(t, m, "v")
+	if strings.Contains(m.View(), "PROTO") {
+		t.Error("v should switch back to grouped")
+	}
+}
+
+func TestPortsScrollBounded(t *testing.T) {
+	m := New(data(), Funcs{})
+	m, _ = press(t, m, "tab")
+	for range 50 {
+		m, _ = press(t, m, "j")
+	}
+	if !strings.Contains(m.View(), "immich-server") && !strings.Contains(m.View(), "gitea") {
+		t.Errorf("scrolled past all content:\n%s", m.View())
 	}
 }
