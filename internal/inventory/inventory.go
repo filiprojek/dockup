@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 
 	"github.com/compose-spec/compose-go/v2/types"
 
@@ -152,6 +153,25 @@ func (inv *Inventory) DeclaredStopped() []ports.Declared {
 		}
 		for _, s := range p.Services {
 			out = append(out, s.Declared...)
+		}
+	}
+	return out
+}
+
+// Managed returns the projects whose directory lies inside one of roots,
+// i.e. the ones the user maintains (e.g. under /srv/docker).
+func (inv *Inventory) Managed(roots []string) map[string]bool {
+	out := map[string]bool{}
+	for _, p := range inv.Projects {
+		if p.Standalone || p.Dir == "" {
+			continue
+		}
+		for _, r := range roots {
+			rel, err := filepath.Rel(r, p.Dir)
+			if err == nil && rel != "." && rel != ".." && !strings.HasPrefix(rel, "../") {
+				out[p.Name] = true
+				break
+			}
 		}
 	}
 	return out

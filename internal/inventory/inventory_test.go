@@ -190,3 +190,19 @@ func TestDeclaredPortsOfStoppedProjects(t *testing.T) {
 		}
 	}
 }
+
+func TestManaged(t *testing.T) {
+	inv := &Inventory{Projects: []Project{
+		{Name: "immich", Dir: "/srv/docker/immich"},
+		{Name: "nested", Dir: "/srv/docker/group/app"},
+		{Name: "elsewhere", Dir: "/opt/stacks/x"},
+		{Name: "sibling", Dir: "/srv/docker-old/y"}, // prefix match must not count
+		{Name: "standalone", Standalone: true},
+		{Name: "labelonly"}, // no dir known
+	}}
+	got := inv.Managed([]string{"/srv/docker", "/srv/docker/"})
+	want := map[string]bool{"immich": true, "nested": true}
+	if len(got) != len(want) || !got["immich"] || !got["nested"] {
+		t.Errorf("Managed = %v, want %v", got, want)
+	}
+}
