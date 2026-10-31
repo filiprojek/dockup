@@ -405,3 +405,18 @@ func (a *App) runTUI(ctx context.Context) error {
 	}
 	return a.TUI(ctx, a)
 }
+
+func (a *App) versionCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Show version, commit and build date",
+		Args:  cobra.NoArgs,
+		RunE: func(*cobra.Command, []string) error {
+			if a.JSON {
+				return render.JSON(a.Stdout, a.Build)
+			}
+			fmt.Fprintln(a.Stdout, a.Build.String())
+			return nil
+		},
+	}
+}

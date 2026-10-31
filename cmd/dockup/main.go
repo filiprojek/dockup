@@ -10,9 +10,15 @@ import (
 
 	"github.com/filiprojek/dockup/internal/cli"
 	"github.com/filiprojek/dockup/internal/tui"
+	buildinfo "github.com/filiprojek/dockup/internal/version"
 )
 
-var version = "dev"
+// set via -ldflags by the Makefile / GoReleaser
+var (
+	version = "dev"
+	commit  string
+	date    string
+)
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -21,14 +27,13 @@ func main() {
 	deps, err := cli.HostDeps()
 	if deps != nil {
 		deps.TUI = tui.Run
+		deps.Build = buildinfo.Current(version, commit, date)
 	}
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "dockup:", err)
 		os.Exit(1)
 	}
-	root := cli.NewRoot(deps)
-	root.Version = version
-	if err := root.ExecuteContext(ctx); err != nil {
+	if err := cli.NewRoot(deps).ExecuteContext(ctx); err != nil {
 		var ec cli.ExitError
 		if errors.As(err, &ec) {
 			os.Exit(ec.Code)

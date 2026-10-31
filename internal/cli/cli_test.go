@@ -20,6 +20,7 @@ import (
 	"github.com/filiprojek/dockup/internal/notify"
 	"github.com/filiprojek/dockup/internal/ports"
 	"github.com/filiprojek/dockup/internal/updates"
+	"github.com/filiprojek/dockup/internal/version"
 )
 
 const (
@@ -353,5 +354,24 @@ func TestRootOverrideAndConfigFlag(t *testing.T) {
 	rep, _ := updates.Load(e.cachePath())
 	if r := rep.Find("web", "app"); r.Status != updates.StatusSkipped {
 		t.Errorf("config ignore not applied: %+v", r)
+	}
+}
+
+func TestVersion(t *testing.T) {
+	e := newEnv(t)
+	e.deps.Build = version.Info{Version: "v0.1.0", Commit: "a1b2c3d", Date: "2026-10-31T12:00:00Z", Go: "go1.27.3", Platform: "linux/amd64"}
+	want := "dockup v0.1.0 (commit a1b2c3d, built 2026-10-31T12:00:00Z, go1.27.3, linux/amd64)\n"
+
+	for _, args := range [][]string{{"--version"}, {"version"}} {
+		out, err := e.run(t, args...)
+		if err != nil || out != want {
+			t.Errorf("%v: %v %q", args, err, out)
+		}
+	}
+
+	out, err := e.run(t, "version", "--json")
+	var v version.Info
+	if err != nil || json.Unmarshal([]byte(out), &v) != nil || v != e.deps.Build {
+		t.Errorf("json %v: %s", err, out)
 	}
 }

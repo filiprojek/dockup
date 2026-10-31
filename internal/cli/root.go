@@ -22,6 +22,7 @@ import (
 	"github.com/filiprojek/dockup/internal/render"
 	"github.com/filiprojek/dockup/internal/updater"
 	"github.com/filiprojek/dockup/internal/updates"
+	"github.com/filiprojek/dockup/internal/version"
 )
 
 // Deps are dockup's external dependencies; tests substitute fakes.
@@ -38,6 +39,9 @@ type Deps struct {
 	Stdin    io.Reader
 	Stdout   io.Writer
 	Stderr   io.Writer
+
+	// Build describes this binary for --version / `dockup version`.
+	Build version.Info
 
 	// TUI launches the interactive UI; nil disables `dockup ui`.
 	TUI func(ctx context.Context, a *App) error
@@ -118,6 +122,11 @@ func NewRoot(d *Deps) *cobra.Command {
 			return a.dashboard(cmd.Context())
 		},
 	}
+	if d.Build.Version == "" {
+		d.Build = version.Resolve("", "", "", nil)
+	}
+	root.Version = d.Build.String()
+	root.SetVersionTemplate("{{.Version}}\n")
 	root.SetIn(d.Stdin)
 	root.SetOut(d.Stdout)
 	root.SetErr(d.Stderr)
@@ -127,7 +136,7 @@ func NewRoot(d *Deps) *cobra.Command {
 	pf.StringVar(&cfgPath, "config", "", "config file (default ~/.config/dockup/config.yml, then /etc/dockup/config.yml)")
 	pf.StringSliceVar(&rootDirs, "root", nil, "compose roots to scan (overrides config; default /srv/docker)")
 
-	root.AddCommand(a.statusCmd(), a.checkCmd(), a.updateCmd(), a.portsCmd(), a.portCheckCmd(), a.uiCmd())
+	root.AddCommand(a.statusCmd(), a.checkCmd(), a.updateCmd(), a.portsCmd(), a.portCheckCmd(), a.uiCmd(), a.versionCmd())
 	return root
 }
 
