@@ -59,6 +59,35 @@ Periodic checks with notifications (cron or a systemd timer):
 
 Update history is appended to `~/.local/state/dockup/dockup.log`.
 
+## Install
+
+Download a release (linux amd64 or arm64):
+
+```
+VER=0.1.0 ARCH=amd64
+curl -L https://github.com/filiprojek/dockup/releases/download/v$VER/dockup_${VER}_linux_$ARCH.tar.gz | tar xz dockup
+sudo install -m 0755 dockup /usr/local/bin/
+dockup version
+```
+
+The image is published as `ghcr.io/filiprojek/dockup:<version>`.
+
+## Releases
+
+Releases are manual. Pushing to `main` only runs CI and produces a
+snapshot build, which you can download under Actions → the run → Artifacts.
+To publish a version:
+
+```
+git tag v0.1.0          # tags with a suffix, e.g. v0.2.0-rc1, become pre-releases
+git push origin v0.1.0
+```
+
+The `release` workflow runs the tests, then GoReleaser creates the GitHub
+Release (binaries plus `checksums.txt`, with a changelog from the commits) and
+pushes the images. To try it locally without publishing, run `make snapshot`;
+the output goes to `./dist`.
+
 ## Build
 
 ```
