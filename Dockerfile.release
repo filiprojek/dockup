@@ -1,0 +1,7 @@
+# Used by GoReleaser: binaries are already built, just copied in per platform.
+# For local builds from source use ./Dockerfile instead.
+FROM docker:29-cli
+ARG TARGETPLATFORM
+COPY $TARGETPLATFORM/dockup /usr/local/bin/dockup
+ENTRYPOINT ["dockup"]
+CMD ["--help"]
