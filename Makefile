@@ -4,7 +4,7 @@ COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null)
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS := -s -w -X main.version=$(VERSION) -X main.commit=$(COMMIT) -X main.date=$(DATE)
 
-.PHONY: build test lint install docker snapshot packages clean
+.PHONY: build test lint install docker snapshot packages demo demo-clean clean
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/dockup
@@ -37,6 +37,15 @@ packages:
 	docker run --rm -v $(CURDIR):/w -w /w \
 		$(if $(APK_SIGNING_KEY_FILE),-v $(abspath $(APK_SIGNING_KEY_FILE)):/dockup.rsa:ro -e APK_SIGNING_KEY_FILE=/dockup.rsa) \
 		alpine:3.24 sh -c 'packaging/alpine/index.sh dist site/alpine && chown -R $(shell id -u):$(shell id -g) site'
+
+# README screenshots/GIFs (docs/img) from docs/demo/*.tape, recorded against an
+# isolated docker:dind daemon with fake projects. TAPES="ui" records just one.
+demo: build
+	docs/demo/record.sh $(TAPES)
+
+demo-clean:
+	docker volume rm -f dockup-demo-docker dockup-demo-run dockup-demo-srv
+	docker image rm -f dockup-demo
 
 clean:
 	rm -f $(BIN)

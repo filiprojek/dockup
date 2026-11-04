@@ -24,6 +24,7 @@ make test                           # go test -race ./...
 make lint                           # go vet + gofmt check
 make snapshot                       # local GoReleaser dry run → ./dist, publishes nothing
 make packages                       # apk + xbps repos from ./dist → ./site (docker)
+make demo [TAPES=ui]                # re-record README images in docs/img (docker, isolated dind)
 go test ./internal/ports/           # one package
 go test ./internal/render/ -update  # regenerate golden files, then REVIEW the diff
 ```
@@ -142,6 +143,20 @@ Rules:
 - After changing `.goreleaser.yaml` or `packaging/`, validate with
   `goreleaser check`, `make snapshot` and `make packages`, and keep the
   scripts `shellcheck`-clean.
+
+## README recordings
+
+- `docs/demo/record.sh` starts a private `docker:dind`, and the VHS
+  container shares its network and pid namespaces. `setup.sh` rebuilds the
+  fake projects before every tape (outdated = an older image re-tagged,
+  pending-recreate = the newer image pulled after start), so tapes can be
+  re-run in any order.
+- Record only from this demo, never from a real daemon or `$HOME`. The
+  ports views would show the host's services.
+- In the TUI tape, don't toggle "all ports" (`f`): it shows VHS's own
+  chromium/ttyd sockets.
+- After `make demo`, look at the PNGs and a few GIF frames
+  (`ffmpeg -ss <t> -i x.gif -frames:v 1 out.png`) before committing.
 
 ## Don't
 
