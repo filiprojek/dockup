@@ -44,5 +44,6 @@ jobs:
           name: dockup-snapshot-${{ github.sha }}
           path: |
             dist/*.tar.gz
+            dist/*.apk
             dist/checksums.txt
           retention-days: 14

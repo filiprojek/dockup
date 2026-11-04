@@ -11,6 +11,11 @@ permissions:
   contents: write # create the GitHub Release
   packages: write # push to ghcr.io
 
+# Pre-release tags (v1.2.0-rc1) get packages on the GitHub Release but don't
+# update the apk/xbps repositories on GitHub Pages.
+env:
+  PRERELEASE: ${{ contains(github.ref_name, '-') }}
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -36,6 +41,22 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # APK_SIGNING_KEY / XBPS_SIGNING_KEY: unencrypted RSA private keys (PEM)
+      - name: signing keys
+        env:
+          APK_SIGNING_KEY: ${{ secrets.APK_SIGNING_KEY }}
+          XBPS_SIGNING_KEY: ${{ secrets.XBPS_SIGNING_KEY }}
+        run: |
+          if [ -z "$APK_SIGNING_KEY" ] || [ -z "$XBPS_SIGNING_KEY" ]; then
+            echo "::error::secrets APK_SIGNING_KEY and XBPS_SIGNING_KEY must be set"
+            exit 1
+          fi
+          umask 077
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$APK_SIGNING_KEY" > "$RUNNER_TEMP/keys/dockup.rsa"
+          printf '%s\n' "$XBPS_SIGNING_KEY" > "$RUNNER_TEMP/keys/xbps.pem"
+          echo "APK_SIGNING_KEY_FILE=$RUNNER_TEMP/keys/dockup.rsa" >> "$GITHUB_ENV"
+
       - uses: goreleaser/goreleaser-action@v7
         with:
           distribution: goreleaser
@@ -43,3 +64,46 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # nfpm can't build xbps, so build those from the release tarballs
+      - name: void packages
+        run: |
+          docker run --rm -v "$PWD:/w" -v "$RUNNER_TEMP/keys:/keys:ro" -w /w \
+            -e XBPS_SIGNING_KEY_FILE=/keys/xbps.pem \
+            ghcr.io/void-linux/void-glibc-full:latest \
+            packaging/void/build.sh "${GITHUB_REF_NAME#v}" dist site/void
+      - name: attach void packages to the release
+        run: gh release upload "$GITHUB_REF_NAME" site/void/*.xbps --clobber
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: alpine repository
+        run: |
+          docker run --rm -v "$PWD:/w" -v "$RUNNER_TEMP/keys:/keys:ro" -w /w \
+            -e APK_SIGNING_KEY_FILE=/keys/dockup.rsa \
+            alpine:3.24 packaging/alpine/index.sh dist site/alpine
+
+      - name: remove signing keys
+        if: always()
+        run: rm -rf "$RUNNER_TEMP/keys"
+
+      - uses: actions/upload-pages-artifact@v5
+        if: env.PRERELEASE == 'false'
+        with:
+          path: site
+
+  # https://filiprojek.github.io/dockup/{alpine,void}
+  # One-time: Settings → Pages → Source: GitHub Actions.
+  pages:
+    needs: release
+    if: ${{ !contains(github.ref_name, '-') }}
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - id: deploy
+        uses: actions/deploy-pages@v5
