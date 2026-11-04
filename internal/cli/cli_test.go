@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"syscall"
 	"testing"
@@ -37,10 +38,23 @@ func (f fakeReg) Digest(_ context.Context, ref string) (string, error) {
 	return "", errors.New("not found")
 }
 
-type fakeRunner struct{ calls []string }
+type fakeRunner struct {
+	calls  []string
+	failOn string            // fail commands containing this
+	hook   func(args string) // e.g. swap a container's image on "up"
+}
 
 func (f *fakeRunner) Run(_ context.Context, args []string, out io.Writer) error {
-	f.calls = append(f.calls, strings.Join(args, " "))
+	j := strings.Join(args, " ")
+	f.calls = append(f.calls, j)
+	io.WriteString(out, "compose output\n")
+	if f.hook != nil {
+		f.hook(j)
+	}
+	if f.failOn != "" && strings.Contains(j, f.failOn) {
+		io.WriteString(out, "Error response from daemon: cannot stop container\n")
+		return errors.New("exit status 1")
+	}
 	return nil
 }
 
@@ -58,6 +72,7 @@ func (f *fakeSender) Send(_ context.Context, m notify.Message) error {
 }
 
 type env struct {
+	docker *dockerx.Fake
 	deps   *Deps
 	runner *fakeRunner
 	sender *fakeSender
@@ -95,7 +110,7 @@ func newEnv(t *testing.T) *env {
 			"   0: 00000000:0016 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 11 1 0 100 0 0 10 0\n"+
 			"   1: 00000000:1F90 00000000:0000 0A 00000000:00000000 00:00000000 00000000     0        0 12 1 0 100 0 0 10 0\n"), 0o644)
 
-	e := &env{runner: &fakeRunner{}, sender: &fakeSender{}, home: home}
+	e := &env{runner: &fakeRunner{}, sender: &fakeSender{}, home: home, docker: docker}
 	e.deps = &Deps{
 		Docker:   docker,
 		Registry: fakeReg{"ghcr.io/acme/web:latest": dNew, "redis:7": dOld, "gitea/gitea:1.24": dOld},
@@ -404,5 +419,72 @@ func TestPortsManagedAndGrouped(t *testing.T) {
 	var gs []ports.Group
 	if err := json.Unmarshal([]byte(out), &gs); err != nil || len(gs) != 2 || gs[0].Project != "gitea" || gs[1].Project != "web" {
 		t.Errorf("json %v: %s", err, out)
+	}
+}
+
+// newImageOnUp makes "up" recreate web/app on a new image.
+func (e *env) newImageOnUp() {
+	e.runner.hook = func(args string) {
+		if strings.Contains(args, " up -d") {
+			e.docker.List[0].ImageID = "sha256:web2"
+		}
+	}
+}
+
+func TestUpdatePrintsRecap(t *testing.T) {
+	e := newEnv(t)
+	e.newImageOnUp()
+	out, err := e.run(t, "update", "web", "--yes")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"UPDATE RECAP", "pull ✓ down ✓ up ✓", "2/2 running", "updated: app", "1 ok · 0 partial · 0 failed · 1 service updated"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestUpdateRecapAfterFailedDown(t *testing.T) {
+	e := newEnv(t)
+	e.runner.failOn = "-p web down"
+	out, err := e.run(t, "update", "web", "--yes")
+	if err == nil || !strings.Contains(err.Error(), "1 of 1 projects failed") {
+		t.Fatalf("err %v", err)
+	}
+	if n := len(e.runner.calls); n != 3 {
+		t.Errorf("up -d not run after failed down: %v", e.runner.calls)
+	}
+	for _, want := range []string{"partial", "down ✗ up ✓", "✗ down: Error response from daemon: cannot stop container"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q in:\n%s", want, out)
+		}
+	}
+}
+
+func TestUpdateJSON(t *testing.T) {
+	e := newEnv(t)
+	e.newImageOnUp()
+	var stdout, stderr bytes.Buffer
+	e.deps.Stdout, e.deps.Stderr = &stdout, &stderr
+	cmd := NewRoot(e.deps)
+	cmd.SetArgs([]string{"update", "web", "--yes", "--json"})
+	if err := cmd.Execute(); err != nil {
+		t.Fatal(err)
+	}
+	var got struct {
+		Projects []struct {
+			Project, Status string
+			Updated         []string
+		}
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &got); err != nil {
+		t.Fatalf("stdout is not JSON: %v\n%s", err, stdout.String())
+	}
+	if len(got.Projects) != 1 || got.Projects[0].Status != "ok" || !reflect.DeepEqual(got.Projects[0].Updated, []string{"app"}) {
+		t.Errorf("recap %+v", got)
+	}
+	if !strings.Contains(stderr.String(), "compose output") {
+		t.Errorf("compose output should go to stderr, got %q", stderr.String())
 	}
 }

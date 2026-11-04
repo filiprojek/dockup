@@ -140,29 +140,34 @@ func (a *App) updateCmd() *cobra.Command {
 	return cmd
 }
 
-// Update plans, confirms and applies targets, then refreshes the cache for
-// the touched projects.
+// Update plans, confirms and applies targets, refreshes the cache for the
+// touched projects and prints a recap. With --json, compose output and
+// prompts go to stderr and the recap to stdout.
 func (a *App) Update(ctx context.Context, inv *inventory.Inventory, targets []updater.Target, dryRun, yes bool) error {
 	plans, err := updater.BuildPlans(inv, targets)
 	if err != nil {
 		return err
 	}
+	out := a.Stdout
+	if a.JSON {
+		out = a.Stderr
+	}
 	if !dryRun && !yes {
-		fmt.Fprintln(a.Stdout, "Will update:")
+		fmt.Fprintln(out, "Will update:")
 		for _, t := range targets {
 			what := "whole project (pull, down, up -d)"
 			if len(t.Services) > 0 {
 				what = fmt.Sprintf("services %v (pull, up -d)", t.Services)
 			}
-			fmt.Fprintf(a.Stdout, "  %s: %s\n", t.Project, what)
+			fmt.Fprintf(out, "  %s: %s\n", t.Project, what)
 		}
-		if !a.confirm("Proceed?") {
-			fmt.Fprintln(a.Stdout, "Aborted.")
+		if !a.confirm(out, "Proceed?") {
+			fmt.Fprintln(out, "Aborted.")
 			return nil
 		}
 	}
 
-	u := updater.Updater{Runner: a.Runner, Out: a.Stdout, DryRun: dryRun, Now: a.Now}
+	u := updater.Updater{Runner: a.Runner, Out: out, DryRun: dryRun, Now: a.Now}
 	if !dryRun {
 		if f, err := updater.OpenLog(a.Cfg.LogPath); err != nil {
 			fmt.Fprintf(a.Stderr, "warning: can't write log %s: %v\n", a.Cfg.LogPath, err)
@@ -176,27 +181,29 @@ func (a *App) Update(ctx context.Context, inv *inventory.Inventory, targets []up
 		return nil
 	}
 
-	failed := 0
-	for _, o := range outcomes {
-		if o.Err != nil {
-			failed++
-			fmt.Fprintf(a.Stderr, "%s: %v\n", o.Project, o.Err)
+	after := a.refreshCache(ctx, outcomes)
+	recap := updater.BuildRecap(outcomes, inv, after)
+	if a.JSON {
+		if err := render.JSON(a.Stdout, recap); err != nil {
+			return err
 		}
+	} else {
+		fmt.Fprintln(a.Stdout)
+		a.R.UpdateRecap(a.Stdout, recap)
 	}
-	a.refreshCache(ctx, outcomes)
-	if failed > 0 {
-		return fmt.Errorf("%d of %d projects failed", failed, len(outcomes))
+	if n := recap.Counts(); n[updater.RecapPartial]+n[updater.RecapFailed] > 0 {
+		return fmt.Errorf("%d of %d projects failed", n[updater.RecapPartial]+n[updater.RecapFailed], len(outcomes))
 	}
-	fmt.Fprintf(a.Stdout, "Updated %d project(s).\n", len(outcomes))
 	return nil
 }
 
 // refreshCache re-checks only the projects just updated and merges the
 // results into the cached report, so the dashboard reflects the update.
-func (a *App) refreshCache(ctx context.Context, outcomes []updater.Outcome) {
+// It returns the fresh inventory (empty if it couldn't be loaded).
+func (a *App) refreshCache(ctx context.Context, outcomes []updater.Outcome) *inventory.Inventory {
 	inv, err := a.Inventory(ctx)
 	if err != nil {
-		return
+		return &inventory.Inventory{}
 	}
 	touched := map[string]bool{}
 	for _, o := range outcomes {
@@ -217,6 +224,7 @@ func (a *App) refreshCache(ctx context.Context, outcomes []updater.Outcome) {
 	rep.Results = append(rep.Results, fresh.Results...)
 	slices.SortStableFunc(rep.Results, func(x, y updates.Result) int { return cmp.Compare(x.Project, y.Project) })
 	_ = updates.Save(a.Cfg.CachePath, rep)
+	return inv
 }
 
 // PortTable collects kernel sockets and Docker-published ports.

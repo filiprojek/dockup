@@ -178,8 +178,8 @@ func (a *App) Check(ctx context.Context, inv *inventory.Inventory) (updates.Repo
 	return rep, updates.Save(a.Cfg.CachePath, rep)
 }
 
-func (a *App) confirm(prompt string) bool {
-	fmt.Fprintf(a.Stdout, "%s [y/N] ", prompt)
+func (a *App) confirm(w io.Writer, prompt string) bool {
+	fmt.Fprintf(w, "%s [y/N] ", prompt)
 	line, _ := bufio.NewReader(a.Stdin).ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
