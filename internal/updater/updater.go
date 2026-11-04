@@ -121,9 +121,10 @@ type Outcome struct {
 // StepResult is one step of a plan. Ran is false when it was skipped
 // because an earlier step failed.
 type StepResult struct {
-	Name string
-	Ran  bool
-	Err  error
+	Name   string `json:"name"`
+	Ran    bool   `json:"ran"`
+	Err    error  `json:"-"`
+	Detail string `json:"detail,omitempty"` // last output line of a failed step, e.g. the daemon's reason
 }
 
 type Updater struct {
@@ -168,8 +169,9 @@ func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 				continue
 			}
 			r.Ran = true
-			if err := u.Runner.Run(ctx, s.Args, u.Out); err != nil {
-				r.Err = err
+			var tail lastLine
+			if err := u.Runner.Run(ctx, s.Args, io.MultiWriter(u.Out, &tail)); err != nil {
+				r.Err, r.Detail = err, tail.String()
 				errs = append(errs, fmt.Errorf("%s: %w", stepName(s, p), err))
 				if s.Name == "down" {
 					downFailed = true

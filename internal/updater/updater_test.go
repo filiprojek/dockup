@@ -154,7 +154,7 @@ func TestApplyRunsUpAfterFailedDown(t *testing.T) {
 	if res[0].Err == nil || !strings.Contains(res[0].Err.Error(), "down") || res[1].Err != nil {
 		t.Errorf("results %+v", res)
 	}
-	want := []StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true, Err: res[0].Steps[1].Err}, {Name: "up", Ran: true}}
+	want := []StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true, Err: res[0].Steps[1].Err, Detail: "ran down"}, {Name: "up", Ran: true}}
 	if !reflect.DeepEqual(res[0].Steps, want) || res[0].Steps[1].Err == nil {
 		t.Errorf("steps %+v", res[0].Steps)
 	}
@@ -182,7 +182,7 @@ func TestApplyPullFailureTouchesNothing(t *testing.T) {
 	if len(r.calls) != 4 {
 		t.Fatalf("calls %v", r.calls)
 	}
-	want := []StepResult{{Name: "pull", Ran: true, Err: res[0].Steps[0].Err}, {Name: "down"}, {Name: "up"}}
+	want := []StepResult{{Name: "pull", Ran: true, Err: res[0].Steps[0].Err, Detail: "ran pull"}, {Name: "down"}, {Name: "up"}}
 	if res[0].Err == nil || !reflect.DeepEqual(res[0].Steps, want) {
 		t.Errorf("result %+v", res[0])
 	}
