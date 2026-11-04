@@ -23,7 +23,7 @@ make build                          # ./dockup with version ldflags
 make test                           # go test -race ./...
 make lint                           # go vet + gofmt check
 make snapshot                       # local GoReleaser dry run → ./dist, publishes nothing
-make packages                       # apk + xbps repos from ./dist → ./site (docker)
+make packages                       # apk, xbps and apt repos from ./dist → ./site (docker)
 make demo [TAPES=ui]                # re-record README images in docs/img (docker, isolated dind)
 go test ./internal/ports/           # one package
 go test ./internal/render/ -update  # regenerate golden files, then REVIEW the diff
@@ -126,15 +126,17 @@ Rules:
   artifact with GoReleaser (`--skip=publish,docker`).
 - `.github/workflows/release.yml` runs **only** on `v*` tags. It runs the
   tests, then GoReleaser publishes the GitHub Release (linux amd64/arm64
-  tarballs, signed `.apk` packages via `nfpms`, and checksums) and
+  tarballs, `.apk` (signed) and `.deb` packages via `nfpms`, and checksums) and
   `ghcr.io/filiprojek/dockup` images built from `Dockerfile.release`. It then
   runs `packaging/void/build.sh` in a Void container to make signed `.xbps`
   packages (nfpm can't build xbps), attaches them to the release, and runs
-  `packaging/alpine/index.sh` in an Alpine container to sign `APKINDEX`. For
-  tags without a `-` it then deploys `site/` (`alpine/`, `void/`) to GitHub
-  Pages.
-- Signing keys come from the secrets `APK_SIGNING_KEY` and
-  `XBPS_SIGNING_KEY`. Without the matching `*_SIGNING_KEY_FILE` env vars,
+  `packaging/alpine/index.sh` in an Alpine container to sign `APKINDEX` and
+  `packaging/debian/repo.sh` in a Debian container to build and sign the apt
+  repo (`.deb` files themselves come from `nfpms` and are unsigned; apt
+  trusts them via the signed `Release`). For tags without a `-` it then
+  deploys `site/` (`alpine/`, `void/`, `debian/`) to GitHub Pages.
+- Signing keys come from the secrets `APK_SIGNING_KEY`, `XBPS_SIGNING_KEY`
+  and `DEB_SIGNING_KEY`. Without the matching `*_SIGNING_KEY_FILE` env vars,
   the scripts and nfpm produce unsigned output, which is what snapshots and
   `make packages` use.
 - apk repos fetch `<name>-<pkgver>.apk`, so `index.sh` renames packages from
@@ -152,12 +154,16 @@ Rules:
   openssl genrsa -out xbps-privkey.pem 4096  # xbps repodata + packages
   gh secret set APK_SIGNING_KEY < dockup.rsa
   gh secret set XBPS_SIGNING_KEY < xbps-privkey.pem
+  # apt Release file: OpenPGP key, ed25519, no passphrase, no expiry
+  export GNUPGHOME=$(mktemp -d)
+  gpg --batch --passphrase '' --quick-gen-key "dockup apt repository <filip@filiprojek.cz>" ed25519 sign never
+  gpg --armor --export-secret-keys | gh secret set DEB_SIGNING_KEY
   ```
 
   Then set Settings → Pages → Source to "GitHub Actions", and under Environments →
   `github-pages` allow tags `v*` (by default only `main` may deploy). Back up
   the keys outside GitHub. A new key forces every user to re-trust it, and
-  the xbps fingerprint in README.md would change.
+  the fingerprints in README.md would change.
 - After changing `.goreleaser.yaml` or `packaging/`, validate with
   `goreleaser check`, `make snapshot` and `make packages`, and keep the
   scripts `shellcheck`-clean.

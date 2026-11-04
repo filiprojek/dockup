@@ -47,6 +47,15 @@ sudo xbps-install -S dockup
 Accept the key only if its fingerprint is
 `04:a0:0a:e2:a3:01:bc:2c:44:a7:43:f7:47:c2:aa:9e`.
 
+**Debian / Ubuntu**
+
+```
+sudo mkdir -p /etc/apt/keyrings
+sudo curl -fsSLo /etc/apt/keyrings/dockup.gpg https://filiprojek.github.io/dockup/debian/dockup.gpg
+echo "deb [signed-by=/etc/apt/keyrings/dockup.gpg] https://filiprojek.github.io/dockup/debian stable main" | sudo tee /etc/apt/sources.list.d/dockup.list
+sudo apt update && sudo apt install dockup
+```
+
 Packages are available for x86_64 and aarch64 (on Void, for glibc and musl).
 They update with the rest of your system and don't pull in docker.
 
@@ -54,7 +63,7 @@ They update with the rest of your system and don't pull in docker.
 [Releases](https://github.com/filiprojek/dockup/releases):
 
 ```
-VER=1.0.1 ARCH=amd64   # or arm64
+VER=1.1.0 ARCH=amd64   # or arm64
 curl -L https://github.com/filiprojek/dockup/releases/download/v$VER/dockup_${VER}_linux_$ARCH.tar.gz | tar xz dockup
 sudo install -m 0755 dockup /usr/local/bin/
 ```
