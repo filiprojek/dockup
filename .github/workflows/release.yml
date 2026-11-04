@@ -64,6 +64,10 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Release the tag that triggered this run. When v1.0.0 and v1.0.0-rc2
+          # are on the same commit, GoReleaser would otherwise pick the rc
+          # (git's version sort puts -rc2 after 1.0.0).
+          GORELEASER_CURRENT_TAG: ${{ github.ref_name }}
 
       # nfpm can't build xbps, so build those from the release tarballs
       - name: void packages
