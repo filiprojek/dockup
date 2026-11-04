@@ -168,6 +168,9 @@ func (a *App) Update(ctx context.Context, inv *inventory.Inventory, targets []up
 	}
 
 	u := updater.Updater{Runner: a.Runner, Out: out, DryRun: dryRun, Now: a.Now}
+	if isTTY(out) {
+		u.Progress = "tty"
+	}
 	if !dryRun {
 		if f, err := updater.OpenLog(a.Cfg.LogPath); err != nil {
 			fmt.Fprintf(a.Stderr, "warning: can't write log %s: %v\n", a.Cfg.LogPath, err)

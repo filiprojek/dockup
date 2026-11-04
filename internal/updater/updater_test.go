@@ -206,3 +206,19 @@ func TestApplyDryRun(t *testing.T) {
 }
 
 func slicesClone(s []string) []string { return append([]string(nil), s...) }
+
+// Output is teed to find a failed step's reason, so compose no longer sees a
+// terminal; Progress keeps its live progress display.
+func TestApplyProgressFlag(t *testing.T) {
+	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}})
+	r := &fakeRunner{}
+	var out bytes.Buffer
+	Updater{Runner: r, Out: &out, Progress: "tty", Now: fixedClock()}.Apply(context.Background(), plans)
+
+	if !strings.HasPrefix(r.calls[0], "docker compose --progress tty --project-directory /srv/docker/gitea") {
+		t.Errorf("calls %v", r.calls)
+	}
+	if strings.Contains(out.String(), "--progress") {
+		t.Errorf("printed command should stay clean:\n%s", out.String())
+	}
+}
