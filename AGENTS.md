@@ -140,6 +140,24 @@ Rules:
 - apk repos fetch `<name>-<pkgver>.apk`, so `index.sh` renames packages from
   their `.PKGINFO`. xbps versions can't contain `-` or `_`, so `build.sh`
   strips them (`0.2.0-rc1` → `0.2.0rc1`).
+- **Cutting a release** (maintainer only): `git tag vX.Y.Z && git push origin
+  vX.Y.Z`. A `-` suffix (`v1.2.0-rc1`) makes a pre-release, which gets no
+  `:latest` image and doesn't update the Pages repos. Use patch versions for
+  fixes and docs, and minor versions for new features or flags.
+- **One-time setup** (already done for this repo; needed again only if a key
+  is lost):
+
+  ```sh
+  openssl genrsa -out dockup.rsa 4096        # apk packages + APKINDEX
+  openssl genrsa -out xbps-privkey.pem 4096  # xbps repodata + packages
+  gh secret set APK_SIGNING_KEY < dockup.rsa
+  gh secret set XBPS_SIGNING_KEY < xbps-privkey.pem
+  ```
+
+  Then set Settings → Pages → Source to "GitHub Actions", and under Environments →
+  `github-pages` allow tags `v*` (by default only `main` may deploy). Back up
+  the keys outside GitHub. A new key forces every user to re-trust it, and
+  the xbps fingerprint in README.md would change.
 - After changing `.goreleaser.yaml` or `packaging/`, validate with
   `goreleaser check`, `make snapshot` and `make packages`, and keep the
   scripts `shellcheck`-clean.
