@@ -47,7 +47,7 @@ func TestBuildRecap(t *testing.T) {
 		{Project: "immich", Status: RecapOK, Steps: ok, Updated: []string{"server"}, Running: 2, Total: 2, Duration: 2 * time.Second},
 		{Project: "ha", Status: RecapPartial, Steps: outcomes[1].Steps, Updated: []string{"mqtt"}, Running: 1, Total: 2, Duration: time.Minute,
 			Error: "down: Error response from daemon: cannot stop container"},
-		{Project: "gitea", Status: RecapFailed, Steps: outcomes[2].Steps, Running: 1, Total: 1, Error: "pull: exit status 1"},
+		{Project: "gitea", Status: RecapFailed, Steps: outcomes[2].Steps, Running: 1, Total: 1, Error: "pull: exit status 1 (see output above)"},
 	}
 	if !reflect.DeepEqual(r.Projects, want) {
 		t.Errorf("got\n%+v\nwant\n%+v", r.Projects, want)

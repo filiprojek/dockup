@@ -207,18 +207,41 @@ func TestApplyDryRun(t *testing.T) {
 
 func slicesClone(s []string) []string { return append([]string(nil), s...) }
 
-// Output is teed to find a failed step's reason, so compose no longer sees a
-// terminal; Progress keeps its live progress display.
-func TestApplyProgressFlag(t *testing.T) {
+// On a terminal compose must get the terminal itself: forcing
+// `--progress tty` onto a pipe makes some compose versions abort with
+// "provided file is not a console" before doing anything.
+func TestApplyTerminalPassesOutThrough(t *testing.T) {
 	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}})
-	r := &fakeRunner{}
-	var out bytes.Buffer
-	Updater{Runner: r, Out: &out, Progress: "tty", Now: fixedClock()}.Apply(context.Background(), plans)
+	term := &bytes.Buffer{}
+	r := &outRecorder{fail: "down"}
+	res := Updater{Runner: r, Out: term, Terminal: true, Now: fixedClock()}.Apply(context.Background(), plans)
 
-	if !strings.HasPrefix(r.calls[0], "docker compose --progress tty --project-directory /srv/docker/gitea") {
-		t.Errorf("calls %v", r.calls)
+	for i, w := range r.outs {
+		if w != io.Writer(term) {
+			t.Errorf("step %d got a wrapped writer %T, want the terminal itself", i, w)
+		}
 	}
-	if strings.Contains(out.String(), "--progress") {
-		t.Errorf("printed command should stay clean:\n%s", out.String())
+	for _, c := range r.calls {
+		if strings.Contains(c, "--progress") {
+			t.Errorf("unexpected --progress: %s", c)
+		}
 	}
+	if d := res[0].Steps[1].Detail; d != "" {
+		t.Errorf("no detail can be captured on a terminal, got %q", d)
+	}
+}
+
+type outRecorder struct {
+	calls []string
+	outs  []io.Writer
+	fail  string
+}
+
+func (o *outRecorder) Run(_ context.Context, args []string, out io.Writer) error {
+	o.calls = append(o.calls, strings.Join(args, " "))
+	o.outs = append(o.outs, out)
+	if strings.Contains(strings.Join(args, " "), " "+o.fail) {
+		return errors.New("exit status 1")
+	}
+	return nil
 }

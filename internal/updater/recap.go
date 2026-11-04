@@ -51,7 +51,8 @@ func BuildRecap(outcomes []Outcome, before, after *inventory.Inventory) Recap {
 				if s.Err != nil {
 					msg := s.Detail
 					if msg == "" {
-						msg = s.Err.Error()
+						// compose wrote the reason straight to the terminal
+						msg = s.Err.Error() + " (see output above)"
 					}
 					pr.Error = s.Name + ": " + msg
 					break

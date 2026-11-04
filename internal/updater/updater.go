@@ -133,10 +133,11 @@ type Updater struct {
 	Log    io.Writer // persistent history; may be nil
 	DryRun bool
 	Now    func() time.Time
-	// Progress is passed as `docker compose --progress` when set. Output is
-	// teed (to keep a failed step's reason), so compose can't see the
-	// terminal; "tty" keeps its live progress when Out is one.
-	Progress string
+	// Terminal means Out is the user's terminal. It is then passed to
+	// compose unchanged, so compose draws its live progress; the reason of a
+	// failed step can't be captured and stays in the output above. Otherwise
+	// output is teed to keep the last line of a failed step as its Detail.
+	Terminal bool
 }
 
 // Apply runs each plan in order; a failure affects only its own project.
@@ -174,7 +175,11 @@ func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 			}
 			r.Ran = true
 			var tail lastLine
-			if err := u.Runner.Run(ctx, u.withProgress(s.Args), io.MultiWriter(u.Out, &tail)); err != nil {
+			w := u.Out
+			if !u.Terminal {
+				w = io.MultiWriter(u.Out, &tail)
+			}
+			if err := u.Runner.Run(ctx, s.Args, w); err != nil {
 				r.Err, r.Detail = err, tail.String()
 				errs = append(errs, fmt.Errorf("%s: %w", stepName(s, p), err))
 				if s.Name == "down" {
@@ -200,13 +205,6 @@ func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 		out = append(out, o)
 	}
 	return out
-}
-
-func (u Updater) withProgress(args []string) []string {
-	if u.Progress == "" || len(args) < 2 || args[0] != "docker" || args[1] != "compose" {
-		return args
-	}
-	return slices.Concat(args[:2], []string{"--progress", u.Progress}, args[2:])
 }
 
 // stepName strips the shared compose prefix: "pull redis", "up -d".
