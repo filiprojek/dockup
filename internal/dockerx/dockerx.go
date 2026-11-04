@@ -4,9 +4,11 @@ package dockerx
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/netip"
 	"strings"
 
+	cerrdefs "github.com/containerd/errdefs"
 	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/client"
 )
@@ -100,6 +102,9 @@ func (e *Engine) Containers(ctx context.Context) ([]Container, error) {
 
 func (e *Engine) ImageInspect(ctx context.Context, ref string) (Image, error) {
 	res, err := e.c.ImageInspect(ctx, ref)
+	if cerrdefs.IsNotFound(err) {
+		return Image{}, fmt.Errorf("%w: %s", ErrNotFound, ref)
+	}
 	if err != nil {
 		return Image{}, err
 	}

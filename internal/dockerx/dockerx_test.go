@@ -1,11 +1,18 @@
 package dockerx
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"net/netip"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 )
 
 func TestFromSummary(t *testing.T) {
@@ -64,5 +71,24 @@ func TestIgnoredLabel(t *testing.T) {
 		if c.Ignored() != want {
 			t.Errorf("dockup.ignore=%q → %v", v, c.Ignored())
 		}
+	}
+}
+
+func TestEngineImageInspectNotFound(t *testing.T) {
+	// what dockerd answers for an image that was never pulled
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprint(w, `{"message":"No such image: ghcr.io/gethomepage/homepage:latest"}`)
+	}))
+	t.Cleanup(srv.Close)
+	c, err := client.New(client.WithHost("tcp://"+strings.TrimPrefix(srv.URL, "http://")), client.WithAPIVersion("1.47"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = (&Engine{c: c}).ImageInspect(context.Background(), "ghcr.io/gethomepage/homepage:latest")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("got %v, want ErrNotFound", err)
 	}
 }
