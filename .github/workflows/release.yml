@@ -42,19 +42,22 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       # APK_SIGNING_KEY / XBPS_SIGNING_KEY: unencrypted RSA private keys (PEM)
+      # DEB_SIGNING_KEY: armored OpenPGP secret key without passphrase
       - name: signing keys
         env:
           APK_SIGNING_KEY: ${{ secrets.APK_SIGNING_KEY }}
           XBPS_SIGNING_KEY: ${{ secrets.XBPS_SIGNING_KEY }}
+          DEB_SIGNING_KEY: ${{ secrets.DEB_SIGNING_KEY }}
         run: |
-          if [ -z "$APK_SIGNING_KEY" ] || [ -z "$XBPS_SIGNING_KEY" ]; then
-            echo "::error::secrets APK_SIGNING_KEY and XBPS_SIGNING_KEY must be set"
+          if [ -z "$APK_SIGNING_KEY" ] || [ -z "$XBPS_SIGNING_KEY" ] || [ -z "$DEB_SIGNING_KEY" ]; then
+            echo "::error::secrets APK_SIGNING_KEY, XBPS_SIGNING_KEY and DEB_SIGNING_KEY must be set"
             exit 1
           fi
           umask 077
           mkdir -p "$RUNNER_TEMP/keys"
           printf '%s\n' "$APK_SIGNING_KEY" > "$RUNNER_TEMP/keys/dockup.rsa"
           printf '%s\n' "$XBPS_SIGNING_KEY" > "$RUNNER_TEMP/keys/xbps.pem"
+          printf '%s\n' "$DEB_SIGNING_KEY" > "$RUNNER_TEMP/keys/deb.asc"
           echo "APK_SIGNING_KEY_FILE=$RUNNER_TEMP/keys/dockup.rsa" >> "$GITHUB_ENV"
 
       - uses: goreleaser/goreleaser-action@v7
@@ -87,6 +90,12 @@ jobs:
             -e APK_SIGNING_KEY_FILE=/keys/dockup.rsa \
             alpine:3.24 packaging/alpine/index.sh dist site/alpine
 
+      - name: debian repository
+        run: |
+          docker run --rm -v "$PWD:/w" -v "$RUNNER_TEMP/keys:/keys:ro" -w /w \
+            -e DEB_SIGNING_KEY_FILE=/keys/deb.asc \
+            debian:stable-slim packaging/debian/repo.sh dist site/debian
+
       - name: remove signing keys
         if: always()
         run: rm -rf "$RUNNER_TEMP/keys"
@@ -96,7 +105,7 @@ jobs:
         with:
           path: site
 
-  # https://filiprojek.github.io/dockup/{alpine,void}
+  # https://filiprojek.github.io/dockup/{alpine,void,debian}
   # One-time: Settings → Pages → Source: GitHub Actions.
   pages:
     needs: release

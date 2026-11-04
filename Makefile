@@ -26,8 +26,8 @@ docker:
 snapshot:
 	goreleaser release --snapshot --clean --skip=publish
 
-# apk + xbps repositories in ./site from ./dist (run `make snapshot` first).
-# Unsigned unless APK_SIGNING_KEY_FILE / XBPS_SIGNING_KEY_FILE point at keys.
+# apk, xbps and apt repositories in ./site from ./dist (run `make snapshot` first).
+# Unsigned unless APK_/XBPS_/DEB_SIGNING_KEY_FILE point at keys.
 DIST_VERSION = $(shell sed -n 's/.*"version":"\([^"]*\)".*/\1/p' dist/metadata.json)
 packages:
 	rm -rf site
@@ -37,6 +37,9 @@ packages:
 	docker run --rm -v $(CURDIR):/w -w /w \
 		$(if $(APK_SIGNING_KEY_FILE),-v $(abspath $(APK_SIGNING_KEY_FILE)):/dockup.rsa:ro -e APK_SIGNING_KEY_FILE=/dockup.rsa) \
 		alpine:3.24 sh -c 'packaging/alpine/index.sh dist site/alpine && chown -R $(shell id -u):$(shell id -g) site'
+	docker run --rm -v $(CURDIR):/w -w /w \
+		$(if $(DEB_SIGNING_KEY_FILE),-v $(abspath $(DEB_SIGNING_KEY_FILE)):/deb.asc:ro -e DEB_SIGNING_KEY_FILE=/deb.asc) \
+		debian:stable-slim sh -c 'packaging/debian/repo.sh dist site/debian && chown -R $(shell id -u):$(shell id -g) site'
 
 # README screenshots/GIFs (docs/img) from docs/demo/*.tape, recorded against an
 # isolated docker:dind daemon with fake projects. TAPES="ui" records just one.
