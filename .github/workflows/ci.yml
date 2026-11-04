@@ -1,9 +1,17 @@
 name: ci
 
+# Skipped when a push/PR only touches docs and examples. Releases
+# (release.yml, v* tags) always run their own tests.
 on:
   push:
     branches: [main]
+    paths-ignore: &docs
+      - "**.md"
+      - "docs/**"
+      - "LICENSE"
+      - "*.example.yml"
   pull_request:
+    paths-ignore: *docs
 
 permissions:
   contents: read
