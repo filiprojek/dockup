@@ -23,6 +23,34 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [README.md, config.example.yml, docker-compose.example.yml]
 
+# Alpine packages. Void .xbps packages are built from the archives above by
+# packaging/void/build.sh (nfpm has no xbps support).
+nfpms:
+  - id: apk
+    package_name: dockup
+    release: "0" # → pkgver <version>-r0
+    formats: [apk]
+    # apk arch names, so packaging/alpine/index.sh can sort them into repo dirs
+    file_name_template: >-
+      {{ .PackageName }}-{{ .Version }}-r0.{{ if eq .Arch "amd64" }}x86_64{{ else if eq .Arch "arm64" }}aarch64{{ else }}{{ .Arch }}{{ end }}
+    vendor: Filip Rojek
+    maintainer: Filip Rojek <filip@filiprojek.cz>
+    homepage: https://github.com/filiprojek/dockup
+    description: Status, update checks and updates for docker compose projects, plus host port inspection.
+    bindir: /usr/bin
+    contents:
+      - src: README.md
+        dst: /usr/share/doc/dockup/README.md
+      - src: config.example.yml
+        dst: /usr/share/doc/dockup/config.example.yml
+      - src: docker-compose.example.yml
+        dst: /usr/share/doc/dockup/docker-compose.example.yml
+    apk:
+      signature:
+        # unset (snapshots, local builds) → unsigned packages
+        key_file: '{{ envOrDefault "APK_SIGNING_KEY_FILE" "" }}'
+        key_name: dockup # matches /etc/apk/keys/dockup.rsa.pub
+
 checksum:
   name_template: checksums.txt
 
