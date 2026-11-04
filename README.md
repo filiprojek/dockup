@@ -16,7 +16,8 @@ A terminal dashboard for a server full of `docker compose` projects
   ![dockup check and status](docs/img/status.png)
 
 - **Updates**: pull and recreate a whole project or a single service, from the
-  CLI or the UI.
+  CLI or the UI. A recap at the end shows what changed, what failed and why,
+  and what is running now.
 
   ![dockup update](docs/img/update.gif)
 

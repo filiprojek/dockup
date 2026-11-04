@@ -1,6 +1,6 @@
 Output docs/img/update.gif
 Set Width 1200
-Set Height 600
+Set Height 760
 Source docs/demo/common.tape
 
 Type "dockup update web"
