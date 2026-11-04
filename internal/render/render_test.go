@@ -163,12 +163,14 @@ func TestPortGroups(t *testing.T) {
 
 func TestUpdateRecap(t *testing.T) {
 	ok := []updater.StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true}, {Name: "up", Ran: true}}
-	rec := updater.Recap{Duration: 11*time.Minute + 2*time.Second, Projects: []updater.ProjectRecap{
+	rec := updater.Recap{Duration: 11*time.Minute + 33*time.Second, Projects: []updater.ProjectRecap{
 		{Project: "caddy", Status: updater.RecapOK, Steps: ok, Updated: []string{"caddy"}, Running: 1, Total: 1, Duration: 12 * time.Second},
 		{Project: "homeassistant", Status: updater.RecapPartial, Running: 5, Total: 6, Duration: 6*time.Minute + 1500*time.Millisecond,
 			Steps: []updater.StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true, Err: errors.New("x")}, {Name: "up", Ran: true}},
 			Error: "down: Error response from daemon: cannot stop container: c8f840d2627a: tried to kill container, but did not receive an exit event"},
 		{Project: "koillection", Status: updater.RecapOK, Steps: ok, Running: 2, Total: 2, Duration: 14 * time.Second},
+		{Project: "unify", Status: updater.RecapOK, Running: 2, Total: 2, Duration: 31 * time.Second, Updated: []string{"unifi-network-application"},
+			Steps: []updater.StepResult{{Name: "pull", Ran: true, Retried: true}, {Name: "down", Ran: true}, {Name: "up", Ran: true}}},
 		{Project: "nextcloud", Status: updater.RecapFailed, Running: 3, Total: 3, Duration: 3 * time.Second,
 			Steps: []updater.StepResult{{Name: "pull", Ran: true, Err: errors.New("x")}, {Name: "down"}, {Name: "up"}},
 			Error: "pull: unauthorized"},

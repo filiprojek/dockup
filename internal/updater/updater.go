@@ -121,11 +121,15 @@ type Outcome struct {
 // StepResult is one step of a plan. Ran is false when it was skipped
 // because an earlier step failed.
 type StepResult struct {
-	Name   string `json:"name"`
-	Ran    bool   `json:"ran"`
-	Err    error  `json:"-"`
-	Detail string `json:"detail,omitempty"` // last output line of a failed step, e.g. the daemon's reason
+	Name    string `json:"name"`
+	Ran     bool   `json:"ran"`
+	Err     error  `json:"-"`
+	Detail  string `json:"detail,omitempty"`  // last output line of a failed step, e.g. the daemon's reason
+	Retried bool   `json:"retried,omitempty"` // a failed pull was run a second time
 }
+
+// pullRetryWait is the pause before a failed pull is retried once.
+const pullRetryWait = 5 * time.Second
 
 type Updater struct {
 	Runner Runner
@@ -138,16 +142,35 @@ type Updater struct {
 	// failed step can't be captured and stays in the output above. Otherwise
 	// output is teed to keep the last line of a failed step as its Detail.
 	Terminal bool
+	// Sleep waits before retrying a failed pull; nil means a real timer
+	// that stops early when ctx is cancelled.
+	Sleep func(ctx context.Context, d time.Duration) error
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-t.C:
+		return nil
+	}
 }
 
 // Apply runs each plan in order; a failure affects only its own project.
-// A failed pull skips the rest (nothing has changed yet). A failed down still
+// A failed pull is retried once after a short wait (registries throttle
+// bursts), then skips the rest: nothing has changed yet. A failed down still
 // runs up -d: down may already have removed some containers, and skipping up
 // would leave the project down.
 func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 	now := u.Now
 	if now == nil {
 		now = time.Now
+	}
+	sleep := u.Sleep
+	if sleep == nil {
+		sleep = sleepCtx
 	}
 	logf := func(at time.Time, format string, a ...any) {
 		if u.Log != nil && !u.DryRun {
@@ -179,7 +202,16 @@ func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 			if !u.Terminal {
 				w = io.MultiWriter(u.Out, &tail)
 			}
-			if err := u.Runner.Run(ctx, s.Args, w); err != nil {
+			err := u.Runner.Run(ctx, s.Args, w)
+			if err != nil && s.Name == "pull" {
+				fmt.Fprintf(u.Out, "==> pull failed, retrying in %s\n", pullRetryWait)
+				if sleep(ctx, pullRetryWait) == nil {
+					r.Retried = true
+					tail = lastLine{}
+					err = u.Runner.Run(ctx, s.Args, w)
+				}
+			}
+			if err != nil {
 				r.Err, r.Detail = err, tail.String()
 				errs = append(errs, fmt.Errorf("%s: %w", stepName(s, p), err))
 				if s.Name == "down" {
@@ -198,9 +230,16 @@ func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 			if downFailed {
 				note = " (ran up -d anyway)"
 			}
+			if len(o.Steps) > 0 && o.Steps[0].Retried {
+				note += " (pull retried)"
+			}
 			logf(end, "%s FAILED after %s%s: %s", p.Project, o.Duration.Round(time.Millisecond), note, strings.ReplaceAll(o.Err.Error(), "\n", "; "))
 		} else {
-			logf(end, "%s ok (%s)", p.Project, o.Duration.Round(time.Millisecond))
+			note := ""
+			if len(o.Steps) > 0 && o.Steps[0].Retried {
+				note = ", pull retried"
+			}
+			logf(end, "%s ok (%s%s)", p.Project, o.Duration.Round(time.Millisecond), note)
 		}
 		out = append(out, o)
 	}

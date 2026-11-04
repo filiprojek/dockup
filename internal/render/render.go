@@ -441,6 +441,9 @@ func (r Renderer) UpdateRecap(w io.Writer, rec updater.Recap) {
 		if len(p.Updated) > 0 {
 			changed = plain("updated: " + strings.Join(p.Updated, ", "))
 		}
+		if len(p.Steps) > 0 && p.Steps[0].Retried {
+			changed = cell{changed.text + " · pull retried", changed.shown + r.paint(dim, " · pull retried")}
+		}
 		t.add(r.c(bold, p.Project), st, cell{stepsText, strings.Join(steps, " ")}, runCell, plain(p.Duration.Round(time.Second).String()), changed)
 		if p.Error != "" {
 			t.section("  " + r.paint(red, "✗ "+p.Error))

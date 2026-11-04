@@ -176,13 +176,13 @@ func TestApplyDownAndUpFail(t *testing.T) {
 func TestApplyPullFailureTouchesNothing(t *testing.T) {
 	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}, {Project: "immich"}})
 	r := &fakeRunner{failOn: []string{"-p gitea pull"}}
-	res := Updater{Runner: r, Out: io.Discard, Now: fixedClock()}.Apply(context.Background(), plans)
+	res := Updater{Runner: r, Out: io.Discard, Now: fixedClock(), Sleep: noSleep}.Apply(context.Background(), plans)
 
-	// gitea: pull only; immich: 3 steps
-	if len(r.calls) != 4 {
+	// gitea: pull + one retry, nothing else; immich: 3 steps
+	if len(r.calls) != 5 {
 		t.Fatalf("calls %v", r.calls)
 	}
-	want := []StepResult{{Name: "pull", Ran: true, Err: res[0].Steps[0].Err, Detail: "ran pull"}, {Name: "down"}, {Name: "up"}}
+	want := []StepResult{{Name: "pull", Ran: true, Err: res[0].Steps[0].Err, Detail: "ran pull", Retried: true}, {Name: "down"}, {Name: "up"}}
 	if res[0].Err == nil || !reflect.DeepEqual(res[0].Steps, want) {
 		t.Errorf("result %+v", res[0])
 	}
@@ -244,4 +244,66 @@ func (o *outRecorder) Run(_ context.Context, args []string, out io.Writer) error
 		return errors.New("exit status 1")
 	}
 	return nil
+}
+
+func noSleep(context.Context, time.Duration) error { return nil }
+
+// flakyRunner fails the first call that contains fail, then succeeds.
+type flakyRunner struct {
+	calls  []string
+	fail   string
+	failed bool
+}
+
+func (f *flakyRunner) Run(_ context.Context, args []string, _ io.Writer) error {
+	j := strings.Join(args, " ")
+	f.calls = append(f.calls, j)
+	if !f.failed && strings.Contains(j, f.fail) {
+		f.failed = true
+		return errors.New("exit status 18")
+	}
+	return nil
+}
+
+// Registries throttle bursts (e.g. ghcr's "toomanyrequests"); pull is safe to
+// repeat because nothing has been touched yet.
+func TestApplyRetriesFailedPullOnce(t *testing.T) {
+	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}})
+	r := &flakyRunner{fail: "-p gitea pull"}
+	var out, log bytes.Buffer
+	var waited time.Duration
+	sleep := func(_ context.Context, d time.Duration) error { waited = d; return nil }
+	res := Updater{Runner: r, Out: &out, Log: &log, Now: fixedClock(), Sleep: sleep}.Apply(context.Background(), plans)
+
+	if len(r.calls) != 4 || !strings.HasSuffix(r.calls[1], "pull") {
+		t.Fatalf("calls %v", r.calls)
+	}
+	if res[0].Err != nil || !res[0].Steps[0].Retried || res[0].Steps[0].Err != nil {
+		t.Errorf("result %+v", res[0])
+	}
+	if waited != 5*time.Second || !strings.Contains(out.String(), "pull failed, retrying in 5s") {
+		t.Errorf("waited %s, out:\n%s", waited, out.String())
+	}
+	if !strings.Contains(log.String(), "gitea ok") || !strings.Contains(log.String(), "pull retried") {
+		t.Errorf("log:\n%s", log.String())
+	}
+}
+
+func TestApplyNoRetryForDownOrUp(t *testing.T) {
+	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}})
+	r := &flakyRunner{fail: "-p gitea up"}
+	res := Updater{Runner: r, Out: io.Discard, Now: fixedClock(), Sleep: noSleep}.Apply(context.Background(), plans)
+	if len(r.calls) != 3 || res[0].Err == nil {
+		t.Errorf("calls %v err %v", r.calls, res[0].Err)
+	}
+}
+
+func TestApplyNoRetryWhenCancelled(t *testing.T) {
+	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}})
+	r := &flakyRunner{fail: "-p gitea pull"}
+	sleep := func(context.Context, time.Duration) error { return context.Canceled }
+	res := Updater{Runner: r, Out: io.Discard, Now: fixedClock(), Sleep: sleep}.Apply(context.Background(), plans)
+	if len(r.calls) != 1 || res[0].Err == nil {
+		t.Errorf("calls %v err %v", r.calls, res[0].Err)
+	}
 }
