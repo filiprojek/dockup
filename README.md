@@ -56,6 +56,9 @@ echo "deb [signed-by=/etc/apt/keyrings/dockup.gpg] https://filiprojek.github.io/
 sudo apt update && sudo apt install dockup
 ```
 
+The key's fingerprint is `EBE5 9C1F 2B57 DBE1 E922 3D0F 0BBA A4DB A8D9 F24F`
+(check with `gpg --show-keys /etc/apt/keyrings/dockup.gpg`).
+
 Packages are available for x86_64 and aarch64 (on Void, for glibc and musl).
 They update with the rest of your system and don't pull in docker.
 
