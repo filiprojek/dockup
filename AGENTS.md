@@ -23,6 +23,7 @@ make build                          # ./dockup with version ldflags
 make test                           # go test -race ./...
 make lint                           # go vet + gofmt check
 make snapshot                       # local GoReleaser dry run → ./dist, publishes nothing
+make packages                       # apk + xbps repos from ./dist → ./site (docker)
 go test ./internal/ports/           # one package
 go test ./internal/render/ -update  # regenerate golden files, then REVIEW the diff
 ```
@@ -124,16 +125,29 @@ Rules:
   artifact with GoReleaser (`--skip=publish,docker`).
 - `.github/workflows/release.yml` runs **only** on `v*` tags. It runs the
   tests, then GoReleaser publishes the GitHub Release (linux amd64/arm64
-  tarballs and checksums) and `ghcr.io/filiprojek/dockup` images built from
-  `Dockerfile.release`.
-- After changing `.goreleaser.yaml`, validate with `goreleaser check` and
-  `make snapshot`.
+  tarballs, signed `.apk` packages via `nfpms`, and checksums) and
+  `ghcr.io/filiprojek/dockup` images built from `Dockerfile.release`. It then
+  runs `packaging/void/build.sh` in a Void container to make signed `.xbps`
+  packages (nfpm can't build xbps), attaches them to the release, and runs
+  `packaging/alpine/index.sh` in an Alpine container to sign `APKINDEX`. For
+  tags without a `-` it then deploys `site/` (`alpine/`, `void/`) to GitHub
+  Pages.
+- Signing keys come from the secrets `APK_SIGNING_KEY` and
+  `XBPS_SIGNING_KEY`. Without the matching `*_SIGNING_KEY_FILE` env vars,
+  the scripts and nfpm produce unsigned output, which is what snapshots and
+  `make packages` use.
+- apk repos fetch `<name>-<pkgver>.apk`, so `index.sh` renames packages from
+  their `.PKGINFO`. xbps versions can't contain `-` or `_`, so `build.sh`
+  strips them (`0.2.0-rc1` → `0.2.0rc1`).
+- After changing `.goreleaser.yaml` or `packaging/`, validate with
+  `goreleaser check`, `make snapshot` and `make packages`, and keep the
+  scripts `shellcheck`-clean.
 
 ## Don't
 
 - Don't add non-Linux build targets.
 - Don't print from core packages or call `os.Exit` outside
   `cmd/dockup/main.go`.
-- Don't commit `dist/`, built binaries or anything from a real `$HOME`.
+- Don't commit `dist/`, `site/`, signing keys, built binaries or anything from a real `$HOME`.
 - Don't add `CLAUDE.md` or `CLAUDE.local.md`. Claude Code reads this file
   only when neither exists, so instructions for all agents belong here.

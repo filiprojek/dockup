@@ -63,6 +63,29 @@ Update history is appended to `~/.local/state/dockup/dockup.log`.
 
 ## Install
 
+### Alpine Linux
+
+```
+wget -O /etc/apk/keys/dockup.rsa.pub https://filiprojek.github.io/dockup/alpine/dockup.rsa.pub
+echo https://filiprojek.github.io/dockup/alpine >> /etc/apk/repositories
+apk update && apk add dockup
+```
+
+### Void Linux
+
+```
+echo repository=https://filiprojek.github.io/dockup/void > /etc/xbps.d/dockup.conf
+xbps-install -S dockup    # accept the key signed by "Filip Rojek <filip@filiprojek.cz>"
+```
+
+Packages exist for x86_64 and aarch64, and for Void in both glibc and musl
+variants. They don't depend on docker, so install the docker CLI and compose
+plugin however you like. The repositories always carry the latest stable
+release. Every release, pre-releases included, also has the `.apk` and `.xbps`
+files attached.
+
+### Tarball
+
 Download a release (linux amd64 or arm64):
 
 ```
@@ -86,9 +109,26 @@ git push origin v0.1.0
 ```
 
 The `release` workflow runs the tests, then GoReleaser creates the GitHub
-Release (binaries plus `checksums.txt`, with a changelog from the commits) and
-pushes the images. To try it locally without publishing, run `make snapshot`;
-the output goes to `./dist`.
+Release (binaries, signed `.apk` packages and `checksums.txt`, with a changelog
+from the commits) and pushes the images. Next it builds signed `.xbps` packages
+and attaches them, signs the apk and xbps repository indexes and, for
+non-pre-release tags, deploys them to GitHub Pages. To try it locally without
+publishing, run `make snapshot` (output in `./dist`) and then `make packages`
+(unsigned repositories in `./site`).
+
+One-time setup for package signing:
+
+```
+openssl genrsa -out dockup.rsa 4096        # apk packages + APKINDEX
+openssl genrsa -out xbps-privkey.pem 4096  # xbps repodata + packages
+gh secret set APK_SIGNING_KEY < dockup.rsa
+gh secret set XBPS_SIGNING_KEY < xbps-privkey.pem
+```
+
+Then set Settings → Pages → Source to "GitHub Actions". Keep a backup of both
+keys outside GitHub: if a key changes, every user has to trust the new one.
+The public apk key is published next to the repository, and xbps shows the
+key's fingerprint on first sync.
 
 ## Build
 
