@@ -24,6 +24,9 @@ type Data struct {
 	Declared  []ports.Declared // ports of stopped projects
 	Managed   map[string]bool  // projects under the compose roots
 	Roots     []string
+	// CheckOnOpen starts a registry check in the background as soon as the
+	// UI opens; the cached report is shown until it finishes.
+	CheckOnOpen bool
 }
 
 // Funcs are the actions the UI can trigger; nil disables them.
@@ -94,10 +97,24 @@ func New(d Data, f Funcs) Model {
 			m.rows = append(m.rows, row{project: p.Name, service: s.Name, updatable: p.Updatable()})
 		}
 	}
+	m.busy = d.CheckOnOpen && f.Check != nil
 	return m
 }
 
-func (m Model) Init() tea.Cmd { return nil }
+func (m Model) Init() tea.Cmd {
+	if m.busy {
+		return m.checkCmd()
+	}
+	return nil
+}
+
+func (m Model) checkCmd() tea.Cmd {
+	check := m.funcs.Check
+	return func() tea.Msg {
+		rep, err := check()
+		return checkDoneMsg{rep, err}
+	}
+}
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
@@ -205,11 +222,7 @@ func (m Model) updateBrowse(k tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "c":
 		if m.funcs.Check != nil && !m.busy {
 			m.busy, m.err = true, ""
-			check := m.funcs.Check
-			return m, func() tea.Msg {
-				rep, err := check()
-				return checkDoneMsg{rep, err}
-			}
+			return m, m.checkCmd()
 		}
 	}
 	m.scroll()

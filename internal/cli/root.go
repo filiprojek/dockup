@@ -174,6 +174,9 @@ func (a *App) CachedReport() updates.Report {
 // Check queries registries for the inventory and stores the report.
 func (a *App) Check(ctx context.Context, inv *inventory.Inventory) (updates.Report, error) {
 	rep := updates.Checker{Docker: a.Docker, Registry: a.Registry, Concurrency: a.Cfg.Concurrency}.Check(ctx, inv)
+	if err := ctx.Err(); err != nil {
+		return rep, err // cancelled: results are incomplete, keep the old cache
+	}
 	rep.CheckedAt = a.now()
 	return rep, updates.Save(a.Cfg.CachePath, rep)
 }

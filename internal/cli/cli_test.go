@@ -488,3 +488,22 @@ func TestUpdateJSON(t *testing.T) {
 		t.Errorf("compose output should go to stderr, got %q", stderr.String())
 	}
 }
+
+// The UI cancels its opening check when it exits (e.g. to run an update);
+// a cancelled check must not overwrite the cache with half-done results.
+func TestCheckCancelledDoesNotSave(t *testing.T) {
+	e := newEnv(t)
+	a := &App{Deps: e.deps, Cfg: config.Config{CachePath: e.cachePath(), Concurrency: 2}}
+	inv, err := a.Inventory(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := a.Check(ctx, inv); !errors.Is(err, context.Canceled) {
+		t.Errorf("err %v, want context.Canceled", err)
+	}
+	if _, err := os.Stat(e.cachePath()); !os.IsNotExist(err) {
+		t.Errorf("cache written by a cancelled check: %v", err)
+	}
+}

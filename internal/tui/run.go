@@ -18,6 +18,9 @@ import (
 // the normal terminal so compose output streams as usual, then the UI returns.
 func Run(ctx context.Context, a *cli.App) error {
 	in := bufio.NewReader(a.Stdin)
+	// Check registries when the UI first opens. After an update the touched
+	// projects are re-checked by a.Update, so later rounds use the cache.
+	checkOnOpen := true
 	for {
 		inv, err := a.Inventory(ctx)
 		if err != nil {
@@ -27,20 +30,23 @@ func Run(ctx context.Context, a *cli.App) error {
 		if err != nil {
 			return err
 		}
+		// a check still running when the UI closes is cancelled (and not saved)
+		uiCtx, cancel := context.WithCancel(ctx)
 		m := New(Data{
-			Inventory: inv,
-			Report:    a.CachedReport(),
-			Ports:     portRows,
-			Declared:  inv.DeclaredStopped(),
-			Managed:   inv.Managed(a.Cfg.Roots),
-			Roots:     a.Cfg.Roots,
+			Inventory:   inv,
+			Report:      a.CachedReport(),
+			Ports:       portRows,
+			Declared:    inv.DeclaredStopped(),
+			Managed:     inv.Managed(a.Cfg.Roots),
+			Roots:       a.Cfg.Roots,
+			CheckOnOpen: checkOnOpen,
 		}, Funcs{
 			Check: func() (updates.Report, error) {
-				fresh, err := a.Inventory(ctx)
+				fresh, err := a.Inventory(uiCtx)
 				if err != nil {
 					return updates.Report{}, err
 				}
-				return a.Check(ctx, fresh)
+				return a.Check(uiCtx, fresh)
 			},
 			PortCheck: func(spec string) ([]ports.Result, error) {
 				list, err := ports.ParseSpec(spec)
@@ -55,7 +61,9 @@ func Run(ctx context.Context, a *cli.App) error {
 			},
 		})
 
+		checkOnOpen = false
 		final, err := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx)).Run()
+		cancel()
 		if err != nil {
 			return err
 		}

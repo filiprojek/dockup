@@ -78,7 +78,7 @@ sudo install -m 0755 dockup /usr/local/bin/
 
 ```
 dockup                      # compact dashboard
-dockup ui                   # interactive UI (also: dockup -i)
+dockup ui                   # interactive UI, checks registries on open (also: dockup -i)
 dockup status               # projects → services: state, health, updates
 dockup check                # query registries for newer images
 dockup update immich        # pull + recreate a project

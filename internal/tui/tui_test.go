@@ -285,3 +285,37 @@ func TestPortsScrollBounded(t *testing.T) {
 		t.Errorf("scrolled past all content:\n%s", m.View())
 	}
 }
+
+func TestCheckOnOpen(t *testing.T) {
+	newRep := updates.Report{Results: []updates.Result{{Project: "gitea", Service: "server", Status: updates.StatusOutdated}}}
+	d := data()
+	d.CheckOnOpen = true
+	m := New(d, Funcs{Check: func() (updates.Report, error) { return newRep, nil }})
+
+	cmd := m.Init()
+	if cmd == nil || !m.busy {
+		t.Fatal("should start a check on open")
+	}
+	// cached data stays usable while checking
+	if v := m.View(); !strings.Contains(v, "checking registries") || !strings.Contains(v, "gitea") {
+		t.Errorf("view while checking:\n%s", v)
+	}
+	// c doesn't start a second check meanwhile
+	if _, c := press(t, m, "c"); c != nil {
+		t.Error("c started a second check")
+	}
+	next, _ := m.Update(cmd())
+	if m = next.(Model); m.busy || m.data.Report.Find("gitea", "server").Status != updates.StatusOutdated {
+		t.Errorf("report not refreshed: %+v", m.data.Report)
+	}
+
+	if New(data(), Funcs{Check: func() (updates.Report, error) { return newRep, nil }}).Init() != nil {
+		t.Error("no check without CheckOnOpen")
+	}
+	if d := data(); true {
+		d.CheckOnOpen = true
+		if m := New(d, Funcs{}); m.Init() != nil || m.busy {
+			t.Error("no Check func → nothing to run")
+		}
+	}
+}
