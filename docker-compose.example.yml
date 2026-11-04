@@ -3,7 +3,7 @@
 # relative paths in your compose files still resolve.
 services:
   dockup:
-    image: dockup:latest
+    image: ghcr.io/filiprojek/dockup:latest
     network_mode: host
     pid: host
     volumes:

@@ -1,85 +1,34 @@
 # dockup
 
-Overview, updates and ports for a server full of `docker compose` projects
-(by default `/srv/docker/<project>`).
+A terminal dashboard for a server full of `docker compose` projects
+(`/srv/docker/<project>` by default): their state, image updates and ports.
 
-![dockup ui: update states, selection and the ports tab](docs/img/ui.gif)
+![dockup ui](docs/img/ui.gif)
 
-```
-dockup                        # compact dashboard (uses the cached update check)
-dockup status                 # projects → services: state, health, update status
-dockup check [--notify]       # query registries (digest compare), refresh cache
-dockup check --cached --all   # show last check, including up-to-date/skipped
-dockup update immich          # whole project: pull, down, up -d
-dockup update immich/redis    # single service: pull, up -d
-dockup update --all --dry-run # everything with pending updates, print only
-dockup ports [--proto tcp] [--project immich]
-dockup ports --managed --group  # only projects under the roots, by project → service
-dockup port-check 8080,9000-9010 [--ip 10.8.0.1] [--proto tcp|udp|both]
-dockup port-check --free 8000-9000
-dockup ui                     # interactive (also: dockup -i)
-                              #   ports tab: f = all/managed, v = grouped/flat, / = port check
-```
+## Features
 
-Every command accepts `--json`, `--config PATH` and `--root DIR`.
+- **Status**: every compose project with its containers, health and update
+  state. Stopped projects are included.
+- **Update check**: compares your local images with the registry by digest,
+  without pulling. `outdated` means a newer image exists. `pending-recreate`
+  means it's already pulled but the container still runs the old one.
 
-## How it works
+  ![dockup check and status](docs/img/status.png)
 
-- **Discovery**: containers are grouped by their `com.docker.compose.project`
-  label, so a project's database/redis are listed with the app. Directories under
-  each root with a compose file are included even when stopped. Compose files are
-  parsed with compose-go (`.env` interpolation, overrides, profiles).
-- **Update check**: the local image's `RepoDigests` entry is compared with the
-  registry's manifest digest for the same tag (HEAD request, so it doesn't count
-  against Docker Hub pull limits). `pending-recreate` means the newer image is
-  already pulled but the container still runs the old one. Services that use
-  `build:`, images pinned by `@sha256:`, and services marked ignored are
-  skipped. Registry auth comes from `~/.docker/config.json`, including
-  credential helpers.
+- **Updates**: pull and recreate a whole project or a single service, from the
+  CLI or the UI.
 
-  ![dockup check and dockup status](docs/img/status.png)
+  ![dockup update](docs/img/update.gif)
 
-- **Updating**: `dockup update <project>` runs `pull`, `down`, `up -d`, and
-  `<project>/<service>` runs `pull`, `up -d` for just that service. Each run is
-  appended to the log.
+- **Ports**: which container or process owns each listening port, and whether a
+  port is free before you use it. Ports declared by stopped projects show as
+  reserved.
 
-  ![dockup update web](docs/img/update.gif)
-
-- **Ports**: the kernel socket tables (`/proc/net/{tcp,udp}{,6}`) are merged
-  with Docker's published ports, which covers `userland-proxy: false`, where
-  no socket exists. Owners are resolved through `/proc/*/fd` and cgroups (for
-  host-network containers).
-- **port-check**: combines the kernel table, Docker-published ports, a real
-  `bind()` test, and ports declared by **stopped** compose projects
-  (`RESERVED`). A wildcard bind conflicts with any specific IP, and the reverse
-  is also true. It exits with 1 if any port is in use or reserved.
-  Privileged ports can't be bind-tested without root, so they report
-  `UNKNOWN`.
-
-  ![dockup ports --managed --group and dockup port-check](docs/img/ports.png)
-
-The recordings come from a throwaway Docker-in-Docker daemon with demo
-projects (`make demo`, see [docs/demo](docs/demo)).
-
-Run as a user in the `docker` group. Process names for sockets owned by other
-users need `sudo`. Without it, those owners show as `?`.
-
-## Config
-
-See [config.example.yml](config.example.yml). To opt a service out of checks,
-add the label `dockup.ignore: "true"` to it.
-
-Periodic checks with notifications (cron or a systemd timer):
-
-```
-0 */6 * * *  dockup check --notify >/dev/null
-```
-
-Update history is appended to `~/.local/state/dockup/dockup.log`.
+  ![dockup ports and port-check](docs/img/ports.png)
 
 ## Install
 
-### Alpine Linux
+**Alpine Linux**
 
 ```
 sudo wget -O /etc/apk/keys/dockup.rsa.pub https://filiprojek.github.io/dockup/alpine/dockup.rsa.pub
@@ -87,91 +36,75 @@ echo https://filiprojek.github.io/dockup/alpine | sudo tee -a /etc/apk/repositor
 sudo apk update && sudo apk add dockup
 ```
 
-`sudo apk upgrade` then keeps dockup up to date. To remove the repo, delete
-its line from `/etc/apk/repositories` and remove `/etc/apk/keys/dockup.rsa.pub`.
-
-### Void Linux
+**Void Linux**
 
 ```
 echo repository=https://filiprojek.github.io/dockup/void | sudo tee /etc/xbps.d/dockup.conf
 sudo xbps-install -S dockup
 ```
 
-On the first sync xbps asks to import the repository key. Answer `Y` only if it
-shows:
+Accept the key only if its fingerprint is
+`04:a0:0a:e2:a3:01:bc:2c:44:a7:43:f7:47:c2:aa:9e`.
+
+Packages are available for x86_64 and aarch64 (on Void, for glibc and musl).
+They update with the rest of your system and don't pull in docker.
+
+**Other Linux**: download a binary from
+[Releases](https://github.com/filiprojek/dockup/releases):
 
 ```
-signed by "Filip Rojek <filip@filiprojek.cz>"
-Fingerprint: 04:a0:0a:e2:a3:01:bc:2c:44:a7:43:f7:47:c2:aa:9e
-```
-
-`sudo xbps-install -Su` then keeps dockup up to date. To remove the repo, delete
-`/etc/xbps.d/dockup.conf` and
-`/var/db/xbps/keys/04:a0:0a:e2:a3:01:bc:2c:44:a7:43:f7:47:c2:aa:9e.plist`.
-
-Packages exist for x86_64 and aarch64, and for Void in both glibc and musl
-variants. They don't depend on docker, so install the docker CLI and compose
-plugin however you like. The repositories always carry the latest stable
-release. Every release, pre-releases included, also has the `.apk` and `.xbps`
-files attached.
-
-### Tarball
-
-Download a release (linux amd64 or arm64):
-
-```
-VER=1.0.0 ARCH=amd64
+VER=1.0.1 ARCH=amd64   # or arm64
 curl -L https://github.com/filiprojek/dockup/releases/download/v$VER/dockup_${VER}_linux_$ARCH.tar.gz | tar xz dockup
 sudo install -m 0755 dockup /usr/local/bin/
-dockup version
 ```
 
-The image is published as `ghcr.io/filiprojek/dockup:<version>`.
+**Docker**: `ghcr.io/filiprojek/dockup`, see
+[docker-compose.example.yml](docker-compose.example.yml).
 
-## Releases
-
-Releases are manual. Pushing to `main` only runs CI and produces a
-snapshot build, which you can download under Actions → the run → Artifacts.
-To publish a version:
+## Usage
 
 ```
-git tag v0.1.0          # tags with a suffix, e.g. v0.2.0-rc1, become pre-releases
-git push origin v0.1.0
+dockup                      # compact dashboard
+dockup ui                   # interactive UI (also: dockup -i)
+dockup status               # projects → services: state, health, updates
+dockup check                # query registries for newer images
+dockup update immich        # pull + recreate a project
+dockup update immich/redis  # ...or a single service
+dockup update --all -n      # dry run for everything that's outdated
+dockup ports --managed --group
+dockup port-check 8080,9000-9010
+dockup port-check --free 8000-9000
 ```
 
-The `release` workflow runs the tests, then GoReleaser creates the GitHub
-Release (binaries, signed `.apk` packages and `checksums.txt`, with a changelog
-from the commits) and pushes the images. Next it builds signed `.xbps` packages
-and attaches them, signs the apk and xbps repository indexes and, for
-non-pre-release tags, deploys them to GitHub Pages. To try it locally without
-publishing, run `make snapshot` (output in `./dist`) and then `make packages`
-(unsigned repositories in `./site`).
+Every command supports `--json`, `--config` and `--root`. Run as a user in the
+`docker` group. Use `sudo` to see the names of processes owned by other users.
 
-One-time setup for package signing:
+## Configuration
 
-```
-openssl genrsa -out dockup.rsa 4096        # apk packages + APKINDEX
-openssl genrsa -out xbps-privkey.pem 4096  # xbps repodata + packages
-gh secret set APK_SIGNING_KEY < dockup.rsa
-gh secret set XBPS_SIGNING_KEY < xbps-privkey.pem
-```
+Copy [config.example.yml](config.example.yml) to `~/.config/dockup/config.yml`
+or `/etc/dockup/config.yml`. To exclude a service from update checks, add the
+label `dockup.ignore: "true"` to it.
 
-Then set Settings → Pages → Source to "GitHub Actions". Keep a backup of both
-keys outside GitHub: if a key changes, every user has to trust the new one.
-The public apk key is published next to the repository, and xbps shows the
-key's fingerprint on first sync.
-
-## Build
+For periodic checks with notifications (ntfy, gotify or a webhook), use cron or a
+systemd timer:
 
 ```
-make build      # ./dockup
-make test       # go test -race ./...
-make docker     # image; see docker-compose.example.yml for the required mounts
+0 */6 * * *  dockup check --notify >/dev/null
 ```
+
+Updates are logged to `~/.local/state/dockup/dockup.log`.
+
+## Development
+
+```
+make build   # ./dockup
+make test
+make lint
+make demo    # re-record the README images (isolated Docker-in-Docker)
+```
+
+Architecture, conventions and the release process are in [AGENTS.md](AGENTS.md).
 
 ## License
 
-Copyright (C) 2026 Filip Rojek. dockup is free software under the GNU Affero
-General Public License v3.0 or later (`AGPL-3.0-or-later`); see
-[LICENSE](LICENSE). If you run a modified version for others over a network,
-you must offer them its source.
+[AGPL-3.0-or-later](LICENSE) © 2026 Filip Rojek
