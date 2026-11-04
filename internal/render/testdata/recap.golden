@@ -1,0 +1,10 @@
+UPDATE RECAP ──────────────────────────────────────────────────
+caddy          ok       pull ✓ down ✓ up ✓  1/1 running  12s   updated: caddy
+homeassistant  partial  pull ✓ down ✗ up ✓  5/6 running  6m2s  unchanged
+  ✗ down: Error response from daemon: cannot stop container: c8f840d2627a: tried to kill container, but did not receive an exit event
+koillection    ok       pull ✓ down ✓ up ✓  2/2 running  14s   unchanged
+nextcloud      failed   pull ✗ down – up –  3/3 running  3s    unchanged
+  ✗ pull: unauthorized
+servarr        ok       pull ✓ up ✓         6/6 running  2m0s  updated: bazarr, lidarr, prowlarr
+
+3 ok · 1 partial · 1 failed · 4 services updated · 11m2s

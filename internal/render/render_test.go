@@ -2,6 +2,7 @@ package render
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"net/netip"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"github.com/filiprojek/dockup/internal/dockerx"
 	"github.com/filiprojek/dockup/internal/inventory"
 	"github.com/filiprojek/dockup/internal/ports"
+	"github.com/filiprojek/dockup/internal/updater"
 	"github.com/filiprojek/dockup/internal/updates"
 )
 
@@ -157,4 +159,23 @@ func TestPortGroups(t *testing.T) {
 	var b bytes.Buffer
 	Plain().PortGroups(&b, gs)
 	golden(t, "portgroups", b.Bytes())
+}
+
+func TestUpdateRecap(t *testing.T) {
+	ok := []updater.StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true}, {Name: "up", Ran: true}}
+	rec := updater.Recap{Duration: 11*time.Minute + 2*time.Second, Projects: []updater.ProjectRecap{
+		{Project: "caddy", Status: updater.RecapOK, Steps: ok, Updated: []string{"caddy"}, Running: 1, Total: 1, Duration: 12 * time.Second},
+		{Project: "homeassistant", Status: updater.RecapPartial, Running: 5, Total: 6, Duration: 6*time.Minute + 1500*time.Millisecond,
+			Steps: []updater.StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true, Err: errors.New("x")}, {Name: "up", Ran: true}},
+			Error: "down: Error response from daemon: cannot stop container: c8f840d2627a: tried to kill container, but did not receive an exit event"},
+		{Project: "koillection", Status: updater.RecapOK, Steps: ok, Running: 2, Total: 2, Duration: 14 * time.Second},
+		{Project: "nextcloud", Status: updater.RecapFailed, Running: 3, Total: 3, Duration: 3 * time.Second,
+			Steps: []updater.StepResult{{Name: "pull", Ran: true, Err: errors.New("x")}, {Name: "down"}, {Name: "up"}},
+			Error: "pull: unauthorized"},
+		{Project: "servarr", Status: updater.RecapOK, Running: 6, Total: 6, Duration: 2 * time.Minute, Updated: []string{"bazarr", "lidarr", "prowlarr"},
+			Steps: []updater.StepResult{{Name: "pull", Ran: true}, {Name: "up", Ran: true}}},
+	}}
+	var b bytes.Buffer
+	Plain().UpdateRecap(&b, rec)
+	golden(t, "recap", b.Bytes())
 }

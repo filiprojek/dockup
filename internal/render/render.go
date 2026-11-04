@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 	"time"
 	"unicode/utf8"
 
 	"github.com/filiprojek/dockup/internal/inventory"
 	"github.com/filiprojek/dockup/internal/ports"
+	"github.com/filiprojek/dockup/internal/updater"
 	"github.com/filiprojek/dockup/internal/updates"
 )
 
@@ -402,3 +404,57 @@ func (r Renderer) PortGroups(w io.Writer, gs []ports.Group) {
 	}
 	t.write(w)
 }
+
+// UpdateRecap is the end-of-run summary of `dockup update`, one line per
+// project (like Ansible's PLAY RECAP), with the reason under failed ones.
+func (r Renderer) UpdateRecap(w io.Writer, rec updater.Recap) {
+	fmt.Fprintln(w, r.paint(bold, "UPDATE RECAP "+strings.Repeat("─", 50)))
+	var t table
+	for _, p := range rec.Projects {
+		var st cell
+		switch p.Status {
+		case updater.RecapOK:
+			st = r.c(green, string(p.Status))
+		case updater.RecapPartial:
+			st = r.c(yellow, string(p.Status))
+		default:
+			st = r.c(red, string(p.Status))
+		}
+		var steps []string
+		for _, s := range p.Steps {
+			mark := r.paint(green, "✓")
+			switch {
+			case !s.Ran:
+				mark = r.paint(dim, "–")
+			case s.Err != nil:
+				mark = r.paint(red, "✗")
+			}
+			steps = append(steps, s.Name+" "+mark)
+		}
+		stepsText := ansiRe.ReplaceAllString(strings.Join(steps, " "), "")
+		running := fmt.Sprintf("%d/%d running", p.Running, p.Total)
+		runCell := plain(running)
+		if p.Running < p.Total {
+			runCell = r.c(yellow, running)
+		}
+		changed := r.c(dim, "unchanged")
+		if len(p.Updated) > 0 {
+			changed = plain("updated: " + strings.Join(p.Updated, ", "))
+		}
+		t.add(r.c(bold, p.Project), st, cell{stepsText, strings.Join(steps, " ")}, runCell, plain(p.Duration.Round(time.Second).String()), changed)
+		if p.Error != "" {
+			t.section("  " + r.paint(red, "✗ "+p.Error))
+		}
+	}
+	t.write(w)
+
+	c := rec.Counts()
+	fmt.Fprintf(w, "\n%s · %s · %s · %s · %s\n",
+		r.paint(green, fmt.Sprintf("%d ok", c[updater.RecapOK])),
+		r.paint(yellow, fmt.Sprintf("%d partial", c[updater.RecapPartial])),
+		r.paint(red, fmt.Sprintf("%d failed", c[updater.RecapFailed])),
+		plural(rec.UpdatedServices(), "service updated", "services updated"),
+		rec.Duration.Round(time.Second))
+}
+
+var ansiRe = regexp.MustCompile(`\x1b\[[0-9;]*m`)
