@@ -3,6 +3,7 @@ package updater
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -48,6 +49,7 @@ func ParseTargets(args []string) []Target {
 }
 
 type Step struct {
+	Name string // "pull", "down" or "up"
 	Args []string
 }
 
@@ -82,7 +84,7 @@ func BuildPlans(inv *inventory.Inventory, targets []Target) ([]Plan, error) {
 		}
 		base = append(base, "-p", p.Name)
 		cmd := func(args ...string) Step {
-			return Step{Args: append(slices.Clone(base), args...)}
+			return Step{Name: args[0], Args: append(slices.Clone(base), args...)}
 		}
 		plan := Plan{Project: p.Name}
 		if len(t.Services) == 0 {
@@ -111,8 +113,17 @@ func (ExecRunner) Run(ctx context.Context, args []string, out io.Writer) error {
 
 type Outcome struct {
 	Project  string
-	Err      error
+	Err      error // all failed steps joined; nil on success
+	Steps    []StepResult
 	Duration time.Duration
+}
+
+// StepResult is one step of a plan. Ran is false when it was skipped
+// because an earlier step failed.
+type StepResult struct {
+	Name string
+	Ran  bool
+	Err  error
 }
 
 type Updater struct {
@@ -123,7 +134,10 @@ type Updater struct {
 	Now    func() time.Time
 }
 
-// Apply runs each plan in order. A failing step aborts that project only.
+// Apply runs each plan in order; a failure affects only its own project.
+// A failed pull skips the rest (nothing has changed yet). A failed down still
+// runs up -d: down may already have removed some containers, and skipping up
+// would leave the project down.
 func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 	now := u.Now
 	if now == nil {
@@ -140,20 +154,40 @@ func (u Updater) Apply(ctx context.Context, plans []Plan) []Outcome {
 		start := now()
 		logf(start, "%s start: %s", p.Project, stepNames(p))
 		o := Outcome{Project: p.Project}
+		var errs []error
+		skip, downFailed := false, false
 		for _, s := range p.Steps {
-			fmt.Fprintf(u.Out, "==> %s\n", s)
-			if u.DryRun {
+			r := StepResult{Name: s.Name}
+			if skip {
+				o.Steps = append(o.Steps, r)
 				continue
 			}
-			if err := u.Runner.Run(ctx, s.Args, u.Out); err != nil {
-				o.Err = fmt.Errorf("%s: %w", stepName(s, p), err)
-				break
+			fmt.Fprintf(u.Out, "==> %s\n", s)
+			if u.DryRun {
+				o.Steps = append(o.Steps, r)
+				continue
 			}
+			r.Ran = true
+			if err := u.Runner.Run(ctx, s.Args, u.Out); err != nil {
+				r.Err = err
+				errs = append(errs, fmt.Errorf("%s: %w", stepName(s, p), err))
+				if s.Name == "down" {
+					downFailed = true
+				} else {
+					skip = true
+				}
+			}
+			o.Steps = append(o.Steps, r)
 		}
+		o.Err = errors.Join(errs...)
 		end := now()
 		o.Duration = end.Sub(start)
 		if o.Err != nil {
-			logf(end, "%s FAILED after %s: %v", p.Project, o.Duration.Round(time.Millisecond), o.Err)
+			note := ""
+			if downFailed {
+				note = " (ran up -d anyway)"
+			}
+			logf(end, "%s FAILED after %s%s: %s", p.Project, o.Duration.Round(time.Millisecond), note, strings.ReplaceAll(o.Err.Error(), "\n", "; "))
 		} else {
 			logf(end, "%s ok (%s)", p.Project, o.Duration.Round(time.Millisecond))
 		}

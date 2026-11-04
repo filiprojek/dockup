@@ -96,15 +96,17 @@ func TestBuildPlansErrors(t *testing.T) {
 
 type fakeRunner struct {
 	calls  []string
-	failOn string // substring of joined args
+	failOn []string // substrings of joined args
 }
 
 func (f *fakeRunner) Run(_ context.Context, args []string, out io.Writer) error {
 	j := strings.Join(args, " ")
 	f.calls = append(f.calls, j)
 	io.WriteString(out, "ran "+args[len(args)-1]+"\n")
-	if f.failOn != "" && strings.Contains(j, f.failOn) {
-		return errors.New("exit status 1")
+	for _, f := range f.failOn {
+		if strings.Contains(j, f) {
+			return errors.New("exit status 1")
+		}
 	}
 	return nil
 }
@@ -137,21 +139,52 @@ func TestApplyRunsAllAndLogs(t *testing.T) {
 	}
 }
 
-func TestApplyStopsProjectOnFailureButContinuesOthers(t *testing.T) {
+func TestApplyRunsUpAfterFailedDown(t *testing.T) {
+	// down can fail after removing some containers; skipping up -d would
+	// leave the project down
 	plans, _ := BuildPlans(testInv(), []Target{{Project: "immich"}, {Project: "gitea"}})
-	r := &fakeRunner{failOn: "-p immich down"}
+	r := &fakeRunner{failOn: []string{"-p immich down"}}
 	var log bytes.Buffer
 	res := Updater{Runner: r, Out: io.Discard, Log: &log, Now: fixedClock()}.Apply(context.Background(), plans)
 
-	// immich: pull, down(fail) → no up; gitea: 3 steps
-	if len(r.calls) != 5 {
+	// immich: pull, down(fail), up; gitea: 3 steps
+	if len(r.calls) != 6 || !strings.HasSuffix(r.calls[2], "-p immich up -d") {
 		t.Fatalf("calls %v", r.calls)
 	}
-	if res[0].Err == nil || res[1].Err != nil {
+	if res[0].Err == nil || !strings.Contains(res[0].Err.Error(), "down") || res[1].Err != nil {
 		t.Errorf("results %+v", res)
 	}
-	if !strings.Contains(log.String(), "immich FAILED") {
-		t.Errorf("log:\n%s", log.String())
+	want := []StepResult{{Name: "pull", Ran: true}, {Name: "down", Ran: true, Err: res[0].Steps[1].Err}, {Name: "up", Ran: true}}
+	if !reflect.DeepEqual(res[0].Steps, want) || res[0].Steps[1].Err == nil {
+		t.Errorf("steps %+v", res[0].Steps)
+	}
+	if l := log.String(); !strings.Contains(l, "immich FAILED") || !strings.Contains(l, "ran up -d anyway") {
+		t.Errorf("log:\n%s", l)
+	}
+}
+
+func TestApplyDownAndUpFail(t *testing.T) {
+	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}})
+	r := &fakeRunner{failOn: []string{"-p gitea down", "-p gitea up"}}
+	res := Updater{Runner: r, Out: io.Discard, Now: fixedClock()}.Apply(context.Background(), plans)
+
+	if e := res[0].Err; e == nil || !strings.Contains(e.Error(), "down") || !strings.Contains(e.Error(), "up -d") {
+		t.Errorf("err %v", e)
+	}
+}
+
+func TestApplyPullFailureTouchesNothing(t *testing.T) {
+	plans, _ := BuildPlans(testInv(), []Target{{Project: "gitea"}, {Project: "immich"}})
+	r := &fakeRunner{failOn: []string{"-p gitea pull"}}
+	res := Updater{Runner: r, Out: io.Discard, Now: fixedClock()}.Apply(context.Background(), plans)
+
+	// gitea: pull only; immich: 3 steps
+	if len(r.calls) != 4 {
+		t.Fatalf("calls %v", r.calls)
+	}
+	want := []StepResult{{Name: "pull", Ran: true, Err: res[0].Steps[0].Err}, {Name: "down"}, {Name: "up"}}
+	if res[0].Err == nil || !reflect.DeepEqual(res[0].Steps, want) {
+		t.Errorf("result %+v", res[0])
 	}
 }
 
