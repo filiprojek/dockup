@@ -137,3 +137,10 @@ make build      # ./dockup
 make test       # go test -race ./...
 make docker     # image; see docker-compose.example.yml for the required mounts
 ```
+
+## License
+
+Copyright (C) 2026 Filip Rojek. dockup is free software under the GNU Affero
+General Public License v3.0 or later (`AGPL-3.0-or-later`); see
+[LICENSE](LICENSE). If you run a modified version for others over a network,
+you must offer them its source.
