@@ -23,7 +23,7 @@ archives:
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files: [LICENSE, README.md, config.example.yml, docker-compose.example.yml]
 
-# Alpine packages. Void .xbps packages are built from the archives above by
+# Alpine and Debian packages. Void .xbps packages are built from the archives above by
 # packaging/void/build.sh (nfpm has no xbps support).
 nfpms:
   - id: apk
@@ -53,6 +53,30 @@ nfpms:
         # unset (snapshots, local builds) → unsigned packages
         key_file: '{{ envOrDefault "APK_SIGNING_KEY_FILE" "" }}'
         key_name: dockup # matches /etc/apk/keys/dockup.rsa.pub
+
+  # Debian/Ubuntu. Unsigned packages; APT trusts them through the signed
+  # Release file written by packaging/debian/repo.sh.
+  - id: deb
+    package_name: dockup
+    formats: [deb]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Filip Rojek
+    maintainer: Filip Rojek <filip@filiprojek.cz>
+    homepage: https://github.com/filiprojek/dockup
+    license: AGPL-3.0-or-later
+    description: Status, update checks and updates for docker compose projects, plus host port inspection.
+    section: admin
+    priority: optional
+    bindir: /usr/bin
+    contents:
+      - src: LICENSE
+        dst: /usr/share/doc/dockup/copyright
+      - src: README.md
+        dst: /usr/share/doc/dockup/README.md
+      - src: config.example.yml
+        dst: /usr/share/doc/dockup/config.example.yml
+      - src: docker-compose.example.yml
+        dst: /usr/share/doc/dockup/docker-compose.example.yml
 
 checksum:
   name_template: checksums.txt
