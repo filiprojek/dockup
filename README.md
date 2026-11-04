@@ -3,6 +3,8 @@
 Overview, updates and ports for a server full of `docker compose` projects
 (by default `/srv/docker/<project>`).
 
+![dockup ui: update states, selection and the ports tab](docs/img/ui.gif)
+
 ```
 dockup                        # compact dashboard (uses the cached update check)
 dockup status                 # projects → services: state, health, update status
@@ -34,6 +36,15 @@ Every command accepts `--json`, `--config PATH` and `--root DIR`.
   `build:`, images pinned by `@sha256:`, and services marked ignored are
   skipped. Registry auth comes from `~/.docker/config.json`, including
   credential helpers.
+
+  ![dockup check and dockup status](docs/img/status.png)
+
+- **Updating**: `dockup update <project>` runs `pull`, `down`, `up -d`, and
+  `<project>/<service>` runs `pull`, `up -d` for just that service. Each run is
+  appended to the log.
+
+  ![dockup update web](docs/img/update.gif)
+
 - **Ports**: the kernel socket tables (`/proc/net/{tcp,udp}{,6}`) are merged
   with Docker's published ports, which covers `userland-proxy: false`, where
   no socket exists. Owners are resolved through `/proc/*/fd` and cgroups (for
@@ -44,6 +55,11 @@ Every command accepts `--json`, `--config PATH` and `--root DIR`.
   is also true. It exits with 1 if any port is in use or reserved.
   Privileged ports can't be bind-tested without root, so they report
   `UNKNOWN`.
+
+  ![dockup ports --managed --group and dockup port-check](docs/img/ports.png)
+
+The recordings come from a throwaway Docker-in-Docker daemon with demo
+projects (`make demo`, see [docs/demo](docs/demo)).
 
 Run as a user in the `docker` group. Process names for sockets owned by other
 users need `sudo`. Without it, those owners show as `?`.
