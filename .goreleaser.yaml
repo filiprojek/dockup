@@ -21,7 +21,7 @@ builds:
 archives:
   - formats: [tar.gz]
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    files: [README.md, config.example.yml, docker-compose.example.yml]
+    files: [LICENSE, README.md, config.example.yml, docker-compose.example.yml]
 
 # Alpine packages. Void .xbps packages are built from the archives above by
 # packaging/void/build.sh (nfpm has no xbps support).
@@ -36,9 +36,12 @@ nfpms:
     vendor: Filip Rojek
     maintainer: Filip Rojek <filip@filiprojek.cz>
     homepage: https://github.com/filiprojek/dockup
+    license: AGPL-3.0-or-later
     description: Status, update checks and updates for docker compose projects, plus host port inspection.
     bindir: /usr/bin
     contents:
+      - src: LICENSE
+        dst: /usr/share/licenses/dockup/LICENSE
       - src: README.md
         dst: /usr/share/doc/dockup/README.md
       - src: config.example.yml

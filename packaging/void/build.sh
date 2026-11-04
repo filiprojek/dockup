@@ -33,12 +33,13 @@ for pair in amd64:x86_64 amd64:x86_64-musl arm64:aarch64 arm64:aarch64-musl; do
 	[ -f "$tarball" ] || { echo "missing $tarball" >&2; exit 1; }
 
 	dest="$work/$arch"
-	mkdir -p "$dest/usr/bin" "$dest/usr/share/doc/dockup" "$work/src-$arch"
+	mkdir -p "$dest/usr/bin" "$dest/usr/share/doc/dockup" "$dest/usr/share/licenses/dockup" "$work/src-$arch"
 	tar -xzf "$tarball" -C "$work/src-$arch"
 	install -m 0755 "$work/src-$arch/dockup" "$dest/usr/bin/dockup"
 	for doc in README.md config.example.yml docker-compose.example.yml; do
 		install -m 0644 "$work/src-$arch/$doc" "$dest/usr/share/doc/dockup/$doc"
 	done
+	install -m 0644 "$work/src-$arch/LICENSE" "$dest/usr/share/licenses/dockup/LICENSE"
 
 	(
 		cd "$out"
@@ -47,6 +48,7 @@ for pair in amd64:x86_64 amd64:x86_64-musl arm64:aarch64 arm64:aarch64-musl; do
 			-s "Status, update checks and updates for docker compose projects" \
 			-H "https://github.com/filiprojek/dockup" \
 			-m "Filip Rojek <filip@filiprojek.cz>" \
+			-l "AGPL-3.0-or-later" \
 			"$dest"
 	)
 	# each arch has its own <arch>-repodata
