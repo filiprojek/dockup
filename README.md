@@ -66,17 +66,32 @@ Update history is appended to `~/.local/state/dockup/dockup.log`.
 ### Alpine Linux
 
 ```
-wget -O /etc/apk/keys/dockup.rsa.pub https://filiprojek.github.io/dockup/alpine/dockup.rsa.pub
-echo https://filiprojek.github.io/dockup/alpine >> /etc/apk/repositories
-apk update && apk add dockup
+sudo wget -O /etc/apk/keys/dockup.rsa.pub https://filiprojek.github.io/dockup/alpine/dockup.rsa.pub
+echo https://filiprojek.github.io/dockup/alpine | sudo tee -a /etc/apk/repositories
+sudo apk update && sudo apk add dockup
 ```
+
+`sudo apk upgrade` then keeps dockup up to date. To remove the repo, delete
+its line from `/etc/apk/repositories` and remove `/etc/apk/keys/dockup.rsa.pub`.
 
 ### Void Linux
 
 ```
-echo repository=https://filiprojek.github.io/dockup/void > /etc/xbps.d/dockup.conf
-xbps-install -S dockup    # accept the key signed by "Filip Rojek <filip@filiprojek.cz>"
+echo repository=https://filiprojek.github.io/dockup/void | sudo tee /etc/xbps.d/dockup.conf
+sudo xbps-install -S dockup
 ```
+
+On the first sync xbps asks to import the repository key. Answer `Y` only if it
+shows:
+
+```
+signed by "Filip Rojek <filip@filiprojek.cz>"
+Fingerprint: 04:a0:0a:e2:a3:01:bc:2c:44:a7:43:f7:47:c2:aa:9e
+```
+
+`sudo xbps-install -Su` then keeps dockup up to date. To remove the repo, delete
+`/etc/xbps.d/dockup.conf` and
+`/var/db/xbps/keys/04:a0:0a:e2:a3:01:bc:2c:44:a7:43:f7:47:c2:aa:9e.plist`.
 
 Packages exist for x86_64 and aarch64, and for Void in both glibc and musl
 variants. They don't depend on docker, so install the docker CLI and compose
@@ -89,7 +104,7 @@ files attached.
 Download a release (linux amd64 or arm64):
 
 ```
-VER=0.1.0 ARCH=amd64
+VER=1.0.0 ARCH=amd64
 curl -L https://github.com/filiprojek/dockup/releases/download/v$VER/dockup_${VER}_linux_$ARCH.tar.gz | tar xz dockup
 sudo install -m 0755 dockup /usr/local/bin/
 dockup version
